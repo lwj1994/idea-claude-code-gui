@@ -8,7 +8,6 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Logger;
-import com.intellij.openapi.project.Project;
 
 import javax.swing.*;
 import java.io.File;
@@ -148,7 +147,9 @@ public class SessionHandler extends BaseMessageHandler {
             // [FIX] Pass agent prompt and file tags directly to session
             context.getSession().send(finalPrompt, finalAgentPrompt, finalFileTagPaths)
                 .thenRun(() -> {
-                    if (project != null) {
+                    // Claude now triggers success on actual stream_end callback.
+                    // Codex has no stream_end event, keep success trigger at completion.
+                    if (project != null && "codex".equals(context.getSession().getProvider())) {
                         ClaudeNotifier.showSuccess(project, "Task completed");
                     }
                 })
@@ -271,7 +272,9 @@ public class SessionHandler extends BaseMessageHandler {
             // [FIX] Pass agent prompt and file tags directly to session
             context.getSession().send(prompt, attachments, finalAgentPrompt, finalFileTagPaths)
                 .thenRun(() -> {
-                    if (project != null) {
+                    // Claude now triggers success on actual stream_end callback.
+                    // Codex has no stream_end event, keep success trigger at completion.
+                    if (project != null && "codex".equals(context.getSession().getProvider())) {
                         ClaudeNotifier.showSuccess(project, "Task completed");
                     }
                 })
