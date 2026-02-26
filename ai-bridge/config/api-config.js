@@ -18,6 +18,21 @@ function debugLog(...args) {
 }
 
 /**
+ * Inject proxy environment variables from settings.json into process.env.
+ * IDEs launched via desktop launcher don't inherit shell proxy configuration,
+ * so we need to explicitly read and set them from settings.json.
+ */
+function injectProxyEnvVars(settings) {
+  const PROXY_VARS = ['HTTP_PROXY', 'HTTPS_PROXY', 'NO_PROXY', 'http_proxy', 'https_proxy', 'no_proxy'];
+  for (const varName of PROXY_VARS) {
+    if (settings?.env?.[varName] && !process.env[varName]) {
+      process.env[varName] = settings.env[varName];
+      debugLog(`[DEBUG] Set ${varName} from settings.json`);
+    }
+  }
+}
+
+/**
  * Read Claude Code configuration.
  */
 export function loadClaudeSettings() {
@@ -143,6 +158,9 @@ export function setupApiKey() {
   if (settings?.env) {
     debugLog('[DIAG-CONFIG] Settings env keys:', Object.keys(settings.env));
   }
+
+  // Inject proxy env vars early, before any auth logic or network operations
+  injectProxyEnvVars(settings);
 
   let apiKey;
   let baseUrl;
