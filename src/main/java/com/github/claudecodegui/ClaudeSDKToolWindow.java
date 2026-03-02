@@ -103,6 +103,13 @@ public class ClaudeSDKToolWindow implements ToolWindowFactory, DumbAware {
         contentToWindowMap.remove(content);
     }
 
+    /**
+     * Get the ClaudeChatWindow associated with the given Content tab.
+     */
+    public static ClaudeChatWindow getChatWindowForContent(Content content) {
+        return content != null ? contentToWindowMap.get(content) : null;
+    }
+
     @Override
     public void createToolWindowContent(@NotNull Project project, @NotNull ToolWindow toolWindow) {
         // Register JVM Shutdown Hook (only once)
@@ -191,6 +198,16 @@ public class ClaudeSDKToolWindow implements ToolWindowFactory, DumbAware {
                 int removedIndex = event.getIndex();
                 TabStateService tabStateService = TabStateService.getInstance(project);
                 tabStateService.onTabRemoved(removedIndex);
+
+                // Dispose the ClaudeChatWindow associated with the removed tab
+                // to shut down its Daemon process and release resources
+                Content removedContent = event.getContent();
+                ClaudeChatWindow window = contentToWindowMap.get(removedContent);
+                if (window != null) {
+                    LOG.info("[TabManager] Disposing ClaudeChatWindow for removed tab: "
+                        + removedContent.getDisplayName());
+                    window.dispose();
+                }
             }
 
             @Override
@@ -382,7 +399,13 @@ public class ClaudeSDKToolWindow implements ToolWindowFactory, DumbAware {
             ExecutorService executor = Executors.newSingleThreadExecutor();
             try {
                 Future<?> future = executor.submit(() -> {
-                    for (ClaudeChatWindow window : new java.util.ArrayList<>(instances.values())) {
+                    // Collect all unique windows from both maps to cover all tabs
+                    java.util.Set<ClaudeChatWindow> allWindows = java.util.Collections.newSetFromMap(
+                        new java.util.IdentityHashMap<>());
+                    allWindows.addAll(instances.values());
+                    allWindows.addAll(contentToWindowMap.values());
+
+                    for (ClaudeChatWindow window : allWindows) {
                         try {
                             if (window != null && window.getClaudeSDKBridge() != null) {
                                 window.getClaudeSDKBridge().cleanupAllProcesses();

@@ -3,7 +3,6 @@ package com.github.claudecodegui.util;
 import com.github.claudecodegui.ClaudeSession;
 import com.github.claudecodegui.handler.HandlerContext;
 import com.github.claudecodegui.handler.SettingsHandler;
-import com.github.claudecodegui.session.ClaudeMessageHandler;
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
@@ -215,14 +214,14 @@ public class MessageJsonConverter {
         try {
             LOG.debug("pushUsageUpdateFromMessages called with " + messages.size() + " messages");
 
-            JsonObject lastUsage = ClaudeMessageHandler.findLastUsageFromSessionMessages(messages);
+            JsonObject lastUsage = TokenUsageUtils.findLastUsageFromSessionMessages(messages);
             if (lastUsage == null) {
                 LOG.debug("No usage info found in messages");
                 return;
             }
 
             String currentProvider = handlerContext.getCurrentProvider();
-            int usedTokens = ClaudeMessageHandler.extractUsedTokens(lastUsage, currentProvider);
+            int usedTokens = TokenUsageUtils.extractUsedTokens(lastUsage, currentProvider);
             int maxTokens = SettingsHandler.getModelContextLimit(handlerContext.getCurrentModel());
             int percentage = Math.min(100, maxTokens > 0 ? (int) ((usedTokens * 100.0) / maxTokens) : 0);
 

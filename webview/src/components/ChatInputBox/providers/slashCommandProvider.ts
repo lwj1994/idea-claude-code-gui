@@ -13,6 +13,7 @@ const HIDDEN_COMMANDS = new Set([
   '/release-notes',
   '/security-review',
   '/todo',
+  '/doctor',
 ]);
 
 /**

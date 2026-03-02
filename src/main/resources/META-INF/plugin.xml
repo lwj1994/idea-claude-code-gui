@@ -1,7 +1,7 @@
 <idea-plugin>
     <id>com.github.idea-claude-code-gui</id>
     <name>Claude Code GUI</name>
-    <vendor>CodeMossAI</vendor>
+    <vendor>MossX</vendor>
 
     <!-- Resource bundle for i18n -->
     <resource-bundle>messages.ClaudeCodeGuiBundle</resource-bundle>

@@ -935,11 +935,6 @@ export async function sendMessage(message, resumeSessionId = null, cwd = null, p
         // Store the query result for rewind operations
         activeQueryResults.set(msg.session_id, result);
         console.log('[REWIND_DEBUG] Stored query result for session:', msg.session_id);
-
-        // Output slash_commands (if present)
-        if (msg.subtype === 'init' && Array.isArray(msg.slash_commands)) {
-          // console.log('[SLASH_COMMANDS]', JSON.stringify(msg.slash_commands));
-        }
       }
 
       // Check for error result messages (quick detection of API Key errors)
@@ -1762,130 +1757,8 @@ ${payload.error}`;
 	  }
 	}
 
-/**
- * Get the slash commands list.
- * Uses the SDK's supportedCommands() method to get the full command list.
- * This method does not require sending a message and can be called at plugin startup.
- */
-export async function getSlashCommands(cwd = null) {
-  // Default command list (used as fallback)
-  const defaultCommands = [
-    { name: '/help', description: 'Get help with using Claude Code' },
-    { name: '/clear', description: 'Clear conversation history' },
-    { name: '/compact', description: 'Toggle compact mode' },
-    { name: '/config', description: 'View or modify configuration' },
-    { name: '/cost', description: 'Show current session cost' },
-    { name: '/doctor', description: 'Run diagnostic checks' },
-    { name: '/init', description: 'Initialize a new project' },
-    { name: '/login', description: 'Log in to your account' },
-    { name: '/logout', description: 'Log out of your account' },
-    { name: '/memory', description: 'View or manage memory' },
-    { name: '/model', description: 'Change the current model' },
-    { name: '/permissions', description: 'View or modify permissions' },
-    { name: '/review', description: 'Review changes before applying' },
-    { name: '/status', description: 'Show current status' },
-    { name: '/terminal-setup', description: 'Set up terminal integration' },
-    { name: '/vim', description: 'Toggle vim mode' },
-  ];
-
-  // Create a timeout Promise
-  const withTimeout = (promise, ms, fallback) => {
-    return Promise.race([
-      promise,
-      new Promise((resolve) => {
-        setTimeout(() => resolve(fallback), ms);
-      })
-    ]);
-  };
-
-  try {
-    process.env.CLAUDE_CODE_ENTRYPOINT = process.env.CLAUDE_CODE_ENTRYPOINT || 'sdk-ts';
-
-    // Set up API Key
-    setupApiKey();
-
-    // Ensure the HOME environment variable is set correctly
-    if (!process.env.HOME) {
-      process.env.HOME = getRealHomeDir();
-    }
-
-    // Intelligently determine the working directory
-    const workingDirectory = selectWorkingDirectory(cwd);
-    try {
-      process.chdir(workingDirectory);
-    } catch (chdirError) {
-      console.error('[WARNING] Failed to change process.cwd():', chdirError.message);
-    }
-
-    // Create an empty input stream
-    const inputStream = new AsyncStream();
-
-    // Dynamically load Claude SDK (with timeout)
-    const loadSdkPromise = ensureClaudeSdk();
-    const sdk = await withTimeout(loadSdkPromise, 30000, null);
-
-    if (!sdk) {
-      console.log('[SLASH_COMMANDS]', JSON.stringify(defaultCommands));
-      return;
-    }
-
-    const query = sdk?.query;
-    if (typeof query !== 'function') {
-      console.log('[SLASH_COMMANDS]', JSON.stringify(defaultCommands));
-      return;
-    }
-
-    // Call the query function with the empty input stream
-    const result = query({
-      prompt: inputStream,
-      options: {
-        cwd: workingDirectory,
-        permissionMode: 'default',
-        maxTurns: 0,
-        canUseTool: async () => ({
-          behavior: 'deny',
-          message: 'Config loading only'
-        }),
-        tools: { type: 'preset', preset: 'claude_code' },
-        settingSources: ['user', 'project', 'local'],
-        stderr: (data) => {
-          if (data && data.trim()) {
-            console.log(`[SDK-STDERR] ${data.trim()}`);
-          }
-        }
-      }
-    });
-
-    // Close the input stream immediately
-    inputStream.done();
-
-    // Get supported commands list (with timeout)
-    const getCommandsPromise = result.supportedCommands?.() || Promise.resolve([]);
-    const slashCommands = await withTimeout(getCommandsPromise, 15000, defaultCommands);
-
-    // Clean up resources (with timeout, non-blocking)
-    withTimeout(result.return?.() || Promise.resolve(), 5000, null).catch(() => {});
-
-    // Output the command list
-    const finalCommands = slashCommands.length > 0 ? slashCommands : defaultCommands;
-    console.log('[SLASH_COMMANDS]', JSON.stringify(finalCommands));
-
-    console.log(JSON.stringify({
-      success: true,
-      commands: finalCommands
-    }));
-
-  } catch (error) {
-    console.error('[GET_SLASH_COMMANDS_ERROR]', error.message);
-    console.error('[GET_SLASH_COMMANDS_ERROR_STACK]', error.stack);
-    // On error, return the default command list instead of an empty list
-    console.log('[SLASH_COMMANDS]', JSON.stringify(defaultCommands));
-    console.log(JSON.stringify({
-      success: true, // Using default commands; not considered a failure
-      commands: defaultCommands
-    }));
-  }
-}
+// NOTE: getSlashCommands() was removed — slash commands are now resolved
+// locally by Java SlashCommandRegistry (no SDK/bridge call needed).
 
 /**
  * Get MCP server connection status.

@@ -358,9 +358,8 @@ Footer 包含：
      * Call the Claude API.
      */
     private void callClaudeAPI(String prompt, CommitMessageCallback callback) {
+        ClaudeSDKBridge bridge = new ClaudeSDKBridge();
         try {
-            ClaudeSDKBridge bridge = new ClaudeSDKBridge();
-
             // Simple callback handler
             StringBuilder result = new StringBuilder();
 
@@ -394,11 +393,13 @@ Footer 包含：
 
                     @Override
                     public void onError(String error) {
+                        bridge.shutdownDaemon();
                         callback.onError(error);
                     }
 
                     @Override
                     public void onComplete(SDKResult sdkResult) {
+                        bridge.shutdownDaemon();
                         String commitMessage = result.length() > 0
                                 ? result.toString().trim()
                                 : sdkResult.finalResult.trim();
@@ -412,6 +413,7 @@ Footer 包含：
                 }
             );
         } catch (Exception e) {
+            bridge.shutdownDaemon();
             LOG.error("Failed to call Claude API", e);
             callback.onError(ClaudeCodeGuiBundle.message("commit.callApiFailed") + ": " + e.getMessage());
         }
@@ -421,9 +423,8 @@ Footer 包含：
      * Call the Codex API.
      */
     private void callCodexAPI(String prompt, CommitMessageCallback callback) {
+        CodexSDKBridge bridge = new CodexSDKBridge();
         try {
-            CodexSDKBridge bridge = new CodexSDKBridge();
-
             // Simple callback handler
             StringBuilder result = new StringBuilder();
 
@@ -453,11 +454,13 @@ Footer 包含：
 
                     @Override
                     public void onError(String error) {
+                        bridge.cleanupAllProcesses();
                         callback.onError(error);
                     }
 
                     @Override
                     public void onComplete(SDKResult sdkResult) {
+                        bridge.cleanupAllProcesses();
                         String commitMessage = result.length() > 0
                                 ? result.toString().trim()
                                 : sdkResult.finalResult.trim();
@@ -471,6 +474,7 @@ Footer 包含：
                 }
             );
         } catch (Exception e) {
+            bridge.cleanupAllProcesses();
             LOG.error("Failed to call Codex API", e);
             callback.onError(ClaudeCodeGuiBundle.message("commit.callApiFailed") + ": " + e.getMessage());
         }

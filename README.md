@@ -123,7 +123,7 @@ Thanks to all contributors who help make IDEA-Claude-Code-GUI better!
       <a href="https://github.com/zhukunpenglinyutong">
         <img src="https://avatars.githubusercontent.com/u/31264015?size=100" width="100" height="100" alt="zhukunpenglinyutong" style="border-radius: 50%; border: 3px solid #ff6b35; box-shadow: 0 0 15px rgba(255, 107, 53, 0.6);" />
       </a>
-      <div>🔥🔥🔥</div>
+      <div>⭐️⭐️⭐️</div>
     </td>
     <td align="center">
       <a href="https://github.com/M1sury">
@@ -134,7 +134,7 @@ Thanks to all contributors who help make IDEA-Claude-Code-GUI better!
       <a href="https://github.com/gadfly3173">
         <img src="https://avatars.githubusercontent.com/u/28685179?size=100" width="100" height="100" alt="gadfly3173" style="border-radius: 50%; border: 3px solid #ff6b35; box-shadow: 0 0 15px rgba(255, 107, 53, 0.6);" />
       </a>
-      <div>🔥🔥</div>
+      <div>🔥🔥🔥</div>
     </td>
     <td align="center">
       <a href="https://github.com/song782360037">
@@ -240,6 +240,11 @@ Thanks to all contributors who help make IDEA-Claude-Code-GUI better!
         <img src="https://avatars.githubusercontent.com/u/45828854?size=100" width="100" height="100" alt="jhaan83" style="border-radius: 50%;" />
       </a>
     </td>
+    <td align="center">
+      <a href="https://github.com/Olexandr1904">
+        <img src="https://avatars.githubusercontent.com/u/12022163?size=100" width="100" height="100" alt="Olexandr1904" style="border-radius: 50%;" />
+      </a>
+    </td>
   </tr>
 </table>
 
@@ -252,26 +257,6 @@ If this project is helpful to you, you can invite the author to have a KFC or a 
 如果这个项目对你有帮助，想请作者吃顿肯德基（KFC）或者喝杯咖啡，都是可以的~
 
 [View Sponsors List →](./SPONSORS.md)
-
-<table>
-  <tr>
-    <td align="center">
-      <img src="https://claudecodecn-1253302184.cos.ap-beijing.myqcloud.com/zfb.jpg" width="200" alt="Alipay">
-      <br>
-      <b>Alipay</b>
-    </td>
-    <td align="center">
-      <img src="https://claudecodecn-1253302184.cos.ap-beijing.myqcloud.com/wx.jpg" width="200" alt="WeChat">
-      <br>
-      <b>WeChat</b>
-    </td>
-    <td align="center">
-      <img src="https://claudecodecn-1253302184.cos.ap-beijing.myqcloud.com/paypal.png" width="200" alt="PayPal">
-      <br>
-      <b>PayPal</b>
-    </td>
-  </tr>
-</table>
 
 ---
 

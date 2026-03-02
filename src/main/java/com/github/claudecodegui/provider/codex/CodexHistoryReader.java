@@ -1,12 +1,13 @@
 package com.github.claudecodegui.provider.codex;
 
+import com.github.claudecodegui.cache.SessionIndexCache;
+import com.github.claudecodegui.cache.SessionIndexManager;
+import com.github.claudecodegui.util.PlatformUtils;
+import com.github.claudecodegui.util.TagExtractor;
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
-import com.github.claudecodegui.cache.SessionIndexCache;
-import com.github.claudecodegui.cache.SessionIndexManager;
-import com.github.claudecodegui.util.TagExtractor;
 import com.intellij.openapi.diagnostic.Logger;
 
 import java.io.BufferedReader;
@@ -14,7 +15,12 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -26,7 +32,7 @@ public class CodexHistoryReader {
 
     private static final Logger LOG = Logger.getInstance(CodexHistoryReader.class);
 
-    private static final String HOME_DIR = System.getProperty("user.home");
+    private static final String HOME_DIR = PlatformUtils.getHomeDirectory();
     private static final Path CODEX_SESSIONS_DIR = Paths.get(HOME_DIR, ".codex", "sessions");
 
     private final Gson gson = new Gson();
@@ -148,6 +154,7 @@ public class CodexHistoryReader {
 
     /**
      * Read all sessions with cache support.
+     *
      * @param cacheKey cache key (used to distinguish cache entries for different projects)
      */
     private List<SessionInfo> readAllSessionsWithCache(String cacheKey) throws IOException {
@@ -220,21 +227,21 @@ public class CodexHistoryReader {
         List<SessionInfo> newSessions = new ArrayList<>();
         try (Stream<Path> paths = Files.walk(CODEX_SESSIONS_DIR)) {
             List<Path> newFiles = paths
-                .filter(Files::isRegularFile)
-                .filter(path -> path.toString().endsWith(".jsonl"))
-                .filter(path -> {
-                    String fileName = path.getFileName().toString();
-                    String sessionId = fileName.substring(0, fileName.lastIndexOf(".jsonl"));
-                    return !indexedIds.contains(sessionId);
-                })
-                .filter(path -> {
-                    try {
-                        return Files.size(path) > 0;
-                    } catch (IOException e) {
-                        return false;
-                    }
-                })
-                .collect(Collectors.toList());
+                                          .filter(Files::isRegularFile)
+                                          .filter(path -> path.toString().endsWith(".jsonl"))
+                                          .filter(path -> {
+                                              String fileName = path.getFileName().toString();
+                                              String sessionId = fileName.substring(0, fileName.lastIndexOf(".jsonl"));
+                                              return !indexedIds.contains(sessionId);
+                                          })
+                                          .filter(path -> {
+                                              try {
+                                                  return Files.size(path) > 0;
+                                              } catch (IOException e) {
+                                                  return false;
+                                              }
+                                          })
+                                          .collect(Collectors.toList());
 
             LOG.info("[CodexHistoryReader] Found " + newFiles.size() + " new Codex session files");
 
@@ -313,16 +320,16 @@ public class CodexHistoryReader {
 
         try (Stream<Path> paths = Files.walk(CODEX_SESSIONS_DIR)) {
             List<Path> jsonlFiles = paths
-                .filter(Files::isRegularFile)
-                .filter(path -> path.toString().endsWith(".jsonl"))
-                .filter(path -> {
-                    try {
-                        return Files.size(path) > 0;
-                    } catch (IOException e) {
-                        return false;
-                    }
-                })
-                .collect(Collectors.toList());
+                                            .filter(Files::isRegularFile)
+                                            .filter(path -> path.toString().endsWith(".jsonl"))
+                                            .filter(path -> {
+                                                try {
+                                                    return Files.size(path) > 0;
+                                                } catch (IOException e) {
+                                                    return false;
+                                                }
+                                            })
+                                            .collect(Collectors.toList());
 
             LOG.info("[CodexHistoryReader] Found " + jsonlFiles.size() + " Codex session files");
 
@@ -493,11 +500,7 @@ public class CodexHistoryReader {
             return false;
         }
 
-        if (session.messageCount < 1) {
-            return false;
-        }
-
-        return true;
+        return session.messageCount >= 1;
     }
 
     /**
@@ -520,8 +523,8 @@ public class CodexHistoryReader {
             List<SessionInfo> sessions = readAllSessions();
 
             int totalMessages = sessions.stream()
-                .mapToInt(s -> s.messageCount)
-                .sum();
+                                        .mapToInt(s -> s.messageCount)
+                                        .sum();
 
             Map<String, Object> result = new HashMap<>();
             result.put("success", true);
@@ -542,6 +545,7 @@ public class CodexHistoryReader {
     /**
      * Get sessions filtered by project path as JSON string.
      * Only returns sessions whose cwd matches or is under the specified project path.
+     *
      * @param projectPath The project path to filter by
      */
     public String getSessionsForProjectAsJson(String projectPath) {
@@ -556,26 +560,26 @@ public class CodexHistoryReader {
 
             // Filter sessions by cwd
             List<SessionInfo> filteredSessions = allSessions.stream()
-                .filter(session -> {
-                    if (session.cwd == null || session.cwd.isEmpty()) {
-                        return false;
-                    }
-                    String normalizedCwd = normalizePath(session.cwd);
-                    // Match if cwd equals project path or is a subdirectory of it
-                    boolean matches = normalizedCwd.equals(normalizedProjectPath) ||
-                                     normalizedCwd.startsWith(normalizedProjectPath + "/");
-                    if (matches) {
-                        LOG.debug("[CodexHistoryReader] Session " + session.sessionId + " matches (cwd: " + session.cwd + ")");
-                    }
-                    return matches;
-                })
-                .collect(Collectors.toList());
+                                                         .filter(session -> {
+                                                             if (session.cwd == null || session.cwd.isEmpty()) {
+                                                                 return false;
+                                                             }
+                                                             String normalizedCwd = normalizePath(session.cwd);
+                                                             // Match if cwd equals project path or is a subdirectory of it
+                                                             boolean matches = normalizedCwd.equals(normalizedProjectPath) ||
+                                                                                       normalizedCwd.startsWith(normalizedProjectPath + "/");
+                                                             if (matches) {
+                                                                 LOG.debug("[CodexHistoryReader] Session " + session.sessionId + " matches (cwd: " + session.cwd + ")");
+                                                             }
+                                                             return matches;
+                                                         })
+                                                         .collect(Collectors.toList());
 
             LOG.info("[CodexHistoryReader] Sessions after filtering: " + filteredSessions.size());
 
             int totalMessages = filteredSessions.stream()
-                .mapToInt(s -> s.messageCount)
-                .sum();
+                                        .mapToInt(s -> s.messageCount)
+                                        .sum();
 
             Map<String, Object> result = new HashMap<>();
             result.put("success", true);
@@ -619,7 +623,7 @@ public class CodexHistoryReader {
         }
         String trimmed = command.trim();
         return trimmed.matches("^(pwd|ls|cat|head|tail|tree|file|stat)\\b.*") ||
-               trimmed.matches("^sed\\s+-n\\s+.*");
+                       trimmed.matches("^sed\\s+-n\\s+.*");
     }
 
     /**
@@ -711,19 +715,22 @@ public class CodexHistoryReader {
 
         try (Stream<Path> paths = Files.walk(CODEX_SESSIONS_DIR)) {
             return paths
-                .filter(Files::isRegularFile)
-                .filter(path -> path.getFileName().toString().startsWith(sessionId))
-                .filter(path -> path.toString().endsWith(".jsonl"))
-                .findFirst()
-                .orElse(null);
+                           .filter(Files::isRegularFile)
+                           .filter(path -> path.getFileName().toString().startsWith(sessionId))
+                           .filter(path -> path.toString().endsWith(".jsonl"))
+                           .findFirst()
+                           .orElse(null);
         }
     }
 
     /**
      * Get project statistics for usage tracking.
      * Note: Codex sessions don't store project path, so we return all sessions.
+     *
+     * @param projectPath project path (Codex ignores this and returns all sessions)
+     * @param cutoffTime  earliest timestamp (ms) to include; 0 means no cutoff (all time)
      */
-    public ProjectStatistics getProjectStatistics(String projectPath) {
+    public ProjectStatistics getProjectStatistics(String projectPath, long cutoffTime) {
         ProjectStatistics stats = new ProjectStatistics();
         stats.projectPath = projectPath;
         stats.projectName = projectPath.equals("all") ? "All Projects" : Paths.get(projectPath).getFileName().toString();
@@ -750,9 +757,18 @@ public class CodexHistoryReader {
                 // Don't filter Codex sessions by project - show all
             }
 
-            stats.totalSessions = allSessions.size();
-            LOG.info("[CodexHistoryReader] Final sessions count: " + stats.totalSessions);
-            processSessions(allSessions, stats);
+            LOG.info("[CodexHistoryReader] Total sessions before date filtering: " + allSessions.size());
+
+            // Filter sessions by date range when cutoffTime is specified
+            List<SessionSummary> filteredSessions = (cutoffTime > 0)
+                    ? allSessions.stream()
+                        .filter(s -> s.timestamp >= cutoffTime)
+                        .collect(Collectors.toList())
+                    : allSessions;
+
+            stats.totalSessions = filteredSessions.size();
+            LOG.info("[CodexHistoryReader] Filtered sessions count (cutoffTime=" + cutoffTime + "): " + stats.totalSessions);
+            processSessions(filteredSessions, stats);
 
             return stats;
         } catch (Exception e) {
@@ -775,16 +791,16 @@ public class CodexHistoryReader {
         // We need to recursively walk the directory tree
         try (Stream<Path> paths = Files.walk(CODEX_SESSIONS_DIR, 10)) {
             List<Path> jsonlFiles = paths
-                .filter(Files::isRegularFile)
-                .filter(path -> path.toString().endsWith(".jsonl"))
-                .filter(path -> {
-                    try {
-                        return Files.size(path) > 0;
-                    } catch (IOException e) {
-                        return false;
-                    }
-                })
-                .collect(Collectors.toList());
+                                            .filter(Files::isRegularFile)
+                                            .filter(path -> path.toString().endsWith(".jsonl"))
+                                            .filter(path -> {
+                                                try {
+                                                    return Files.size(path) > 0;
+                                                } catch (IOException e) {
+                                                    return false;
+                                                }
+                                            })
+                                            .collect(Collectors.toList());
 
             LOG.info("[CodexHistoryReader] Found " + jsonlFiles.size() + " Codex session files");
 
@@ -880,7 +896,7 @@ public class CodexHistoryReader {
                                 summary.usage.cacheWriteTokens = 0; // Codex doesn't track cache writes separately
 
                                 LOG.debug("[CodexHistoryReader] Found token_count for session " + summary.sessionId +
-                                         " - input: " + inputTokens + ", output: " + outputTokens + ", cached: " + cachedInputTokens);
+                                                  " - input: " + inputTokens + ", output: " + outputTokens + ", cached: " + cachedInputTokens);
                             }
                         }
                     }
@@ -893,7 +909,7 @@ public class CodexHistoryReader {
         summary.timestamp = firstTimestamp > 0 ? firstTimestamp : System.currentTimeMillis();
         summary.summary = sessionTitle;
         summary.usage.totalTokens = summary.usage.inputTokens + summary.usage.outputTokens +
-                                    summary.usage.cacheWriteTokens + summary.usage.cacheReadTokens;
+                                            summary.usage.cacheWriteTokens + summary.usage.cacheReadTokens;
 
         // Use the actual model if found, otherwise keep default
         if (actualModel != null && !actualModel.isEmpty()) {
@@ -1016,15 +1032,15 @@ public class CodexHistoryReader {
         // Calculate trends
         if (stats.weeklyComparison.lastWeek.sessions > 0) {
             stats.weeklyComparison.trends.sessions =
-                ((stats.weeklyComparison.currentWeek.sessions - stats.weeklyComparison.lastWeek.sessions) / (double) stats.weeklyComparison.lastWeek.sessions) * 100.0;
+                    ((stats.weeklyComparison.currentWeek.sessions - stats.weeklyComparison.lastWeek.sessions) / (double) stats.weeklyComparison.lastWeek.sessions) * 100.0;
         }
         if (stats.weeklyComparison.lastWeek.cost > 0) {
             stats.weeklyComparison.trends.cost =
-                ((stats.weeklyComparison.currentWeek.cost - stats.weeklyComparison.lastWeek.cost) / stats.weeklyComparison.lastWeek.cost) * 100.0;
+                    ((stats.weeklyComparison.currentWeek.cost - stats.weeklyComparison.lastWeek.cost) / stats.weeklyComparison.lastWeek.cost) * 100.0;
         }
         if (stats.weeklyComparison.lastWeek.tokens > 0) {
             stats.weeklyComparison.trends.tokens =
-                ((stats.weeklyComparison.currentWeek.tokens - stats.weeklyComparison.lastWeek.tokens) / (double) stats.weeklyComparison.lastWeek.tokens) * 100.0;
+                    ((stats.weeklyComparison.currentWeek.tokens - stats.weeklyComparison.lastWeek.tokens) / (double) stats.weeklyComparison.lastWeek.tokens) * 100.0;
         }
     }
 }

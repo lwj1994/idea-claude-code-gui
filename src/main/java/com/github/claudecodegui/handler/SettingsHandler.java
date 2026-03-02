@@ -4,9 +4,10 @@ import com.github.claudecodegui.CodemossSettingsService;
 import com.github.claudecodegui.provider.claude.ClaudeHistoryReader;
 import com.github.claudecodegui.provider.codex.CodexHistoryReader;
 import com.github.claudecodegui.ClaudeSession;
-import com.github.claudecodegui.session.ClaudeMessageHandler;
+import com.github.claudecodegui.util.TokenUsageUtils;
 import com.github.claudecodegui.bridge.NodeDetector;
 import com.github.claudecodegui.model.NodeDetectionResult;
+import com.github.claudecodegui.skill.SlashCommandRegistry;
 import com.github.claudecodegui.util.FontConfigService;
 import com.github.claudecodegui.util.IgnoreRuleMatcher;
 import com.github.claudecodegui.util.SoundNotificationService;
@@ -27,6 +28,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import com.intellij.util.concurrency.AppExecutorUtil;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.InputStreamReader;
@@ -385,13 +387,13 @@ public class SettingsHandler extends BaseMessageHandler {
 
             // Extract the latest usage information from the current session
             List<ClaudeSession.Message> messages = session.getMessages();
-            JsonObject lastUsage = ClaudeMessageHandler.findLastUsageFromSessionMessages(messages);
+            JsonObject lastUsage = TokenUsageUtils.findLastUsageFromSessionMessages(messages);
             if (lastUsage == null) {
                 // No usage data available yet — send update with zero used tokens
                 sendUsageUpdate(0, newMaxTokens);
                 return;
             }
-            int usedTokens = ClaudeMessageHandler.extractUsedTokens(lastUsage, context.getCurrentProvider());
+            int usedTokens = TokenUsageUtils.extractUsedTokens(lastUsage, context.getCurrentProvider());
 
             // Send update
             sendUsageUpdate(usedTokens, newMaxTokens);
@@ -459,10 +461,57 @@ public class SettingsHandler extends BaseMessageHandler {
                 context.getSession().setProvider(provider);
             }
 
+            // Refresh slash commands for the new provider
+            refreshSlashCommandsForProvider(provider);
+
             refreshContextBar();
         } catch (Exception e) {
             LOG.error("[SettingsHandler] Failed to set provider: " + e.getMessage(), e);
         }
+    }
+
+    /**
+     * Refreshes slash commands after provider switch using local registry.
+     */
+    private void refreshSlashCommandsForProvider(String provider) {
+        String cwd = null;
+        if (context.getSession() != null) {
+            cwd = context.getSession().getCwd();
+        }
+        if (cwd == null) {
+            cwd = context.getProject().getBasePath();
+        }
+
+        final String finalCwd = cwd;
+        CompletableFuture.runAsync(() -> {
+            var commands = SlashCommandRegistry.getCommands(provider, finalCwd);
+            String json = SlashCommandRegistry.toJson(commands);
+
+            final String codexJson;
+            if ("codex".equalsIgnoreCase(provider)) {
+                var codexSkills = SlashCommandRegistry.getCodexSkills(finalCwd);
+                codexJson = SlashCommandRegistry.toJson(codexSkills);
+                LOG.info("[SettingsHandler] Codex skills refreshed: " + codexSkills.size() + " skills");
+            } else {
+                codexJson = null;
+            }
+
+            ApplicationManager.getApplication().invokeLater(() -> {
+                try {
+                    callJavaScript("updateSlashCommands", escapeJs(json));
+
+                    // Push Codex $ skills when switching to codex provider
+                    if (codexJson != null) {
+                        callJavaScript("window.updateDollarCommands", escapeJs(codexJson));
+                    }
+                } catch (Exception e) {
+                    LOG.warn("[SettingsHandler] Failed to refresh slash commands: " + e.getMessage());
+                }
+            });
+        }, AppExecutorUtil.getAppExecutorService()).exceptionally(ex -> {
+            LOG.error("[SettingsHandler] Failed to refresh slash commands asynchronously: " + ex.getMessage(), ex);
+            return null;
+        });
     }
 
     private void refreshContextBar() {
@@ -709,6 +758,7 @@ public class SettingsHandler extends BaseMessageHandler {
             try {
                 String projectPath = "all";
                 String provider = "claude"; // Default to Claude
+                long cutoffTime = 0; // 0 means no cutoff (all time)
 
                 if (content != null && !content.isEmpty() && !content.equals("{}")) {
                     try {
@@ -729,6 +779,17 @@ public class SettingsHandler extends BaseMessageHandler {
                         if (json.has("provider")) {
                             provider = json.get("provider").getAsString();
                         }
+
+                        // Parse dateRange and convert to cutoff timestamp
+                        if (json.has("dateRange")) {
+                            String dateRange = json.get("dateRange").getAsString();
+                            long now = System.currentTimeMillis();
+                            if ("7d".equals(dateRange)) {
+                                cutoffTime = now - 7L * 24 * 60 * 60 * 1000;
+                            } else if ("30d".equals(dateRange)) {
+                                cutoffTime = now - 30L * 24 * 60 * 60 * 1000;
+                            }
+                        }
                     } catch (Exception e) {
                         if ("current".equals(content)) {
                             projectPath = context.getProject().getBasePath();
@@ -739,10 +800,11 @@ public class SettingsHandler extends BaseMessageHandler {
                 }
 
                 // Use corresponding reader based on provider
+                Gson gson = new Gson();
                 String json;
                 if ("codex".equals(provider)) {
                     CodexHistoryReader reader = new CodexHistoryReader();
-                    CodexHistoryReader.ProjectStatistics stats = reader.getProjectStatistics(projectPath);
+                    CodexHistoryReader.ProjectStatistics stats = reader.getProjectStatistics(projectPath, cutoffTime);
 
                     // Debug logging for Codex statistics
                     LOG.info("[SettingsHandler] Codex statistics - sessions: " + stats.totalSessions +
@@ -752,12 +814,10 @@ public class SettingsHandler extends BaseMessageHandler {
                              ", cache read tokens: " + stats.totalUsage.cacheReadTokens +
                              ", total tokens: " + stats.totalUsage.totalTokens);
 
-                    Gson gson = new Gson();
                     json = gson.toJson(stats);
                 } else {
                     ClaudeHistoryReader reader = new ClaudeHistoryReader();
-                    ClaudeHistoryReader.ProjectStatistics stats = reader.getProjectStatistics(projectPath);
-                    Gson gson = new Gson();
+                    ClaudeHistoryReader.ProjectStatistics stats = reader.getProjectStatistics(projectPath, cutoffTime);
                     json = gson.toJson(stats);
                 }
 
@@ -1597,8 +1657,8 @@ public class SettingsHandler extends BaseMessageHandler {
                 SoundNotificationService.ValidationResult validation =
                     SoundNotificationService.getInstance().validateSoundFile(path);
 
-                if (!validation.isValid()) {
-                    final String errorMsg = validation.getErrorMessage();
+                if (!validation.valid()) {
+                    final String errorMsg = validation.errorMessage();
                     ApplicationManager.getApplication().invokeLater(() -> {
                         callJavaScript("window.showError", escapeJs("Invalid audio file: " + errorMsg));
                     });

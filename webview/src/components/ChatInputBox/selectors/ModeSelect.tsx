@@ -93,7 +93,7 @@ export const ModeSelect = ({ value, onChange, provider }: ModeSelectProps) => {
     <div style={{ position: 'relative', display: 'inline-block' }}>
       <button
         ref={buttonRef}
-        className="selector-button"
+        className={`selector-button${value === 'bypassPermissions' ? ' mode-auto-active' : ''}`}
         onClick={handleToggle}
         title={getModeText(currentMode.id, 'tooltip') || `${t('chat.currentMode', { mode: getModeText(currentMode.id, 'label') })}`}
       >

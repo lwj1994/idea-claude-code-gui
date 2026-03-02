@@ -26,7 +26,14 @@ export const MODEL_ID_PATTERN = /^[a-zA-Z0-9._\-/:]+$/;
 // ============ Validation Helpers ============
 
 /**
- * Validate whether a model ID format is valid
+ * Validate whether a model ID format is valid.
+ *
+ * NOTE: Model ID format is intentionally NOT restricted by regex.
+ * Third-party providers use diverse model ID formats that cannot be
+ * predicted (e.g., slashes, brackets, CJK characters). Only basic
+ * sanity checks (non-empty, length limit) are applied.
+ * Do NOT re-add MODEL_ID_PATTERN validation here.
+ *
  * @param id - Model ID
  * @returns Whether the ID is valid
  */
@@ -34,7 +41,7 @@ export function isValidModelId(id: string): boolean {
   if (!id || typeof id !== 'string') return false;
   const trimmed = id.trim();
   if (trimmed.length === 0 || trimmed.length > 256) return false;
-  return MODEL_ID_PATTERN.test(trimmed);
+  return true;
 }
 
 /**
@@ -234,6 +241,30 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
       ANTHROPIC_DEFAULT_HAIKU_MODEL: 'mimo-v2-flash',
       ANTHROPIC_DEFAULT_SONNET_MODEL: 'mimo-v2-flash',
       ANTHROPIC_DEFAULT_OPUS_MODEL: 'mimo-v2-flash',
+    },
+  },
+  {
+    id: 'qwen',
+    nameKey: 'settings.provider.presets.qwen',
+    env: {
+      ANTHROPIC_BASE_URL: 'https://dashscope.aliyuncs.com/apps/anthropic',
+      ANTHROPIC_AUTH_TOKEN: '',
+      ANTHROPIC_MODEL: 'qwen3-max',
+      ANTHROPIC_DEFAULT_HAIKU_MODEL: 'qwen3-max',
+      ANTHROPIC_DEFAULT_SONNET_MODEL: 'qwen3-max',
+      ANTHROPIC_DEFAULT_OPUS_MODEL: 'qwen3-max',
+    },
+  },
+  {
+    id: 'openrouter',
+    nameKey: 'settings.provider.presets.openrouter',
+    env: {
+      ANTHROPIC_BASE_URL: 'https://openrouter.ai/api',
+      ANTHROPIC_AUTH_TOKEN: '',
+      ANTHROPIC_MODEL: 'anthropic/claude-sonnet-4.5',
+      ANTHROPIC_DEFAULT_HAIKU_MODEL: 'anthropic/claude-haiku-4.5',
+      ANTHROPIC_DEFAULT_SONNET_MODEL: 'anthropic/claude-sonnet-4.5',
+      ANTHROPIC_DEFAULT_OPUS_MODEL: 'anthropic/claude-opus-4.5',
     },
   },
 ];

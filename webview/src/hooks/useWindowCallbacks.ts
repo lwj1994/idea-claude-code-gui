@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import type { TFunction } from 'i18next';
 import type { MutableRefObject, RefObject } from 'react';
 import type { ClaudeMessage, ClaudeRawMessage, HistoryData } from '../types';
+import { isValidPermissionMode } from '../components/ChatInputBox/types';
 import type { PermissionMode, SelectedAgent } from '../components/ChatInputBox/types';
 import type { ProviderConfig } from '../types/provider';
 import type { PermissionRequest } from '../components/PermissionDialog';
@@ -10,7 +11,7 @@ import type { PlanApprovalRequest } from '../components/PlanApprovalDialog';
 import type { RewindRequest } from '../components/RewindDialog';
 import { THROTTLE_INTERVAL } from './useStreamingMessages';
 import { sendBridgeEvent } from '../utils/bridge';
-import { setupSlashCommandsCallback, resetSlashCommandsState, resetFileReferenceState } from '../components/ChatInputBox/providers';
+import { setupSlashCommandsCallback, resetSlashCommandsState, resetFileReferenceState, setupDollarCommandsCallback, resetDollarCommandsState } from '../components/ChatInputBox/providers';
 import { downloadJSON } from '../utils/exportMarkdown';
 
 // Performance optimization constants
@@ -864,17 +865,23 @@ export function useWindowCallbacks(options: UseWindowCallbacksOptions): void {
     const updateMode = (mode?: PermissionMode, providerOverride?: string) => {
       const activeProvider = providerOverride || currentProviderRef.current;
       if (activeProvider === 'codex') {
-        setPermissionMode('bypassPermissions');
+        setPermissionMode((prev) => (prev === 'bypassPermissions' ? prev : 'bypassPermissions'));
         return;
       }
-      if (mode === 'default' || mode === 'plan' || mode === 'acceptEdits' || mode === 'bypassPermissions') {
-        setPermissionMode(mode);
-        setClaudePermissionMode(mode);
+      if (isValidPermissionMode(mode)) {
+        setPermissionMode((prev) => (prev === mode ? prev : mode));
+        setClaudePermissionMode((prev) => (prev === mode ? prev : mode));
       }
     };
 
     window.onModeChanged = (mode) => updateMode(mode as PermissionMode);
     window.onModeReceived = (mode) => updateMode(mode as PermissionMode);
+    // Replay early mode update captured in main.tsx placeholder before callbacks are registered.
+    if ((window as unknown as Record<string, unknown>).__pendingModeReceived) {
+      const pending = (window as unknown as Record<string, unknown>).__pendingModeReceived as string;
+      delete (window as unknown as Record<string, unknown>).__pendingModeReceived;
+      window.onModeReceived?.(pending);
+    }
 
     window.onModelChanged = (modelId) => {
       const provider = currentProviderRef.current;
@@ -1154,8 +1161,10 @@ export function useWindowCallbacks(options: UseWindowCallbacksOptions): void {
 
     // ========== Slash Commands Setup ==========
     resetSlashCommandsState();
+    resetDollarCommandsState();
     resetFileReferenceState();
     setupSlashCommandsCallback();
+    setupDollarCommandsCallback();
 
     // ========== Request Initial States ==========
     let retryCount = 0;
@@ -1171,6 +1180,21 @@ export function useWindowCallbacks(options: UseWindowCallbacksOptions): void {
       }
     };
     setTimeout(requestActiveProvider, 200);
+
+    let modeRetryCount = 0;
+    const requestMode = () => {
+      if (window.sendToJava) {
+        // Pull once after callback registration to guarantee eventual convergence
+        // even if backend push arrived before registration.
+        sendBridgeEvent('get_mode');
+      } else {
+        modeRetryCount++;
+        if (modeRetryCount < MAX_RETRIES) {
+          setTimeout(requestMode, 100);
+        }
+      }
+    };
+    setTimeout(requestMode, 200);
 
     let thinkingRetryCount = 0;
     const requestThinkingEnabled = () => {

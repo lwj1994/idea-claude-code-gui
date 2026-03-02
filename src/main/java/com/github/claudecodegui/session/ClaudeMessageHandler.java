@@ -6,6 +6,7 @@ import com.github.claudecodegui.ClaudeSession;
 import com.github.claudecodegui.ClaudeSession.Message;
 import com.github.claudecodegui.handler.SettingsHandler;
 import com.github.claudecodegui.notifications.ClaudeNotifier;
+import com.github.claudecodegui.util.TokenUsageUtils;
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
@@ -449,7 +450,7 @@ public class ClaudeMessageHandler implements MessageCallback {
             // Always update status bar with token usage if available in result
             if (resultJson.has("usage")) {
                 JsonObject resultUsage = resultJson.getAsJsonObject("usage");
-                int usedTokens = extractUsedTokens(resultUsage, state.getProvider());
+                int usedTokens = TokenUsageUtils.extractUsedTokens(resultUsage, state.getProvider());
                 int maxTokens = SettingsHandler.getModelContextLimit(state.getModel());
                 ClaudeNotifier.setTokenUsage(project, usedTokens, maxTokens);
             }
@@ -651,75 +652,6 @@ public class ClaudeMessageHandler implements MessageCallback {
         target.addProperty("text", existing + delta);
     }
 
-    // ===== Token usage helpers =====
-
-    /**
-     * Calculate context window token usage for Claude provider.
-     * Formula: input_tokens + cache_creation_input_tokens + cache_read_input_tokens
-     * (output_tokens excluded — they don't count toward context window until next turn)
-     */
-    public static int calculateContextWindowTokens(int inputTokens, int cacheCreationTokens, int cacheReadTokens) {
-        return inputTokens + cacheCreationTokens + cacheReadTokens;
-    }
-
-    /**
-     * Extract used token count from a usage JSON object, respecting provider differences.
-     * - Claude: input + cache_creation + cache_read (output excluded)
-     * - Codex: input + output (input already includes cached tokens)
-     */
-    public static int extractUsedTokens(JsonObject usage, String provider) {
-        if (usage == null) return 0;
-        int input = usage.has("input_tokens") ? usage.get("input_tokens").getAsInt() : 0;
-        if ("codex".equals(provider)) {
-            int output = usage.has("output_tokens") ? usage.get("output_tokens").getAsInt() : 0;
-            return input + output;
-        }
-        int cacheCreation = usage.has("cache_creation_input_tokens") ? usage.get("cache_creation_input_tokens").getAsInt() : 0;
-        int cacheRead = usage.has("cache_read_input_tokens") ? usage.get("cache_read_input_tokens").getAsInt() : 0;
-        return calculateContextWindowTokens(input, cacheCreation, cacheRead);
-    }
-
-    /**
-     * Find the last usage JSON from a list of raw server messages (JsonObject).
-     * Scans from end to find the last assistant message with usage data.
-     */
-    public static JsonObject findLastUsageFromRawMessages(List<JsonObject> messages) {
-        for (int i = messages.size() - 1; i >= 0; i--) {
-            JsonObject msg = messages.get(i);
-            if (!msg.has("type") || !"assistant".equals(msg.get("type").getAsString())) continue;
-            if (msg.has("message") && msg.get("message").isJsonObject()) {
-                JsonObject message = msg.getAsJsonObject("message");
-                if (message.has("usage") && message.get("usage").isJsonObject()) {
-                    return message.getAsJsonObject("usage");
-                }
-            }
-        }
-        return null;
-    }
-
-    /**
-     * Find the last usage JSON from a list of parsed session messages.
-     * Scans from end to find the last assistant message with usage data.
-     */
-    public static JsonObject findLastUsageFromSessionMessages(List<ClaudeSession.Message> messages) {
-        for (int i = messages.size() - 1; i >= 0; i--) {
-            ClaudeSession.Message msg = messages.get(i);
-            if (msg.type != ClaudeSession.Message.Type.ASSISTANT || msg.raw == null) continue;
-            // Check usage inside message object
-            if (msg.raw.has("message") && msg.raw.get("message").isJsonObject()) {
-                JsonObject message = msg.raw.getAsJsonObject("message");
-                if (message.has("usage") && message.get("usage").isJsonObject()) {
-                    return message.getAsJsonObject("usage");
-                }
-            }
-            // Check usage at root level
-            if (msg.raw.has("usage") && msg.raw.get("usage").isJsonObject()) {
-                return msg.raw.getAsJsonObject("usage");
-            }
-        }
-        return null;
-    }
-
     /**
      * Handle usage data from the [USAGE] tag emitted by ai-bridge during streaming.
      */
@@ -727,7 +659,7 @@ public class ClaudeMessageHandler implements MessageCallback {
         if (content == null || content.isEmpty() || !content.startsWith("{")) return;
         try {
             JsonObject usageJson = gson.fromJson(content, JsonObject.class);
-            int usedTokens = extractUsedTokens(usageJson, state.getProvider());
+            int usedTokens = TokenUsageUtils.extractUsedTokens(usageJson, state.getProvider());
             int maxTokens = SettingsHandler.getModelContextLimit(state.getModel());
             ClaudeNotifier.setTokenUsage(project, usedTokens, maxTokens);
             backfillUsageToAssistantMessage(usageJson);

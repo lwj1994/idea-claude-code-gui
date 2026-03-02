@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { CodexCustomModel } from '../../../types/provider';
-import { isValidModelId } from '../../../types/provider';
+// Model ID format is intentionally not restricted — see isValidModelId() JSDoc for rationale
 import styles from './style.module.less';
 
 interface CustomModelDialogProps {
@@ -83,11 +83,8 @@ export function CustomModelDialog({
 
   const validateModelId = useCallback((id: string): string | null => {
     const trimmedId = id.trim();
-    if (!trimmedId) {
+    if (!trimmedId || trimmedId.length > 256) {
       return t('settings.codexProvider.dialog.modelIdRequired') || 'Model ID is required';
-    }
-    if (!isValidModelId(trimmedId)) {
-      return t('settings.codexProvider.dialog.modelIdInvalid') || 'Invalid model ID format';
     }
     const isDuplicate = models.some(m =>
       m.id === trimmedId && (!editingModel || m.id !== editingModel.id)

@@ -227,6 +227,21 @@ export const AVAILABLE_MODES: ModeInfo[] = [
 ];
 
 /**
+ * Set of valid permission mode IDs, derived from AVAILABLE_MODES.
+ * Use isValidPermissionMode() for validation instead of inline checks.
+ */
+export const VALID_PERMISSION_MODE_IDS: ReadonlySet<string> = new Set(
+  AVAILABLE_MODES.map((m) => m.id)
+);
+
+/**
+ * Check whether a string is a recognized PermissionMode.
+ */
+export function isValidPermissionMode(mode: string | undefined | null): mode is PermissionMode {
+  return typeof mode === 'string' && VALID_PERMISSION_MODE_IDS.has(mode);
+}
+
+/**
  * Model information
  */
 export interface ModelInfo {

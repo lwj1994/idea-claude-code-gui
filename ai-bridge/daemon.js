@@ -9,7 +9,6 @@
  * Protocol (stdin, one JSON per line):
  *   {"id":"1","method":"claude.send","params":{...}}
  *   {"id":"2","method":"heartbeat"}
- *   {"id":"3","method":"claude.getSlashCommands","params":{"cwd":"..."}}
  *
  * Protocol (stdout, one JSON per line):
  *   {"type":"daemon","event":"ready","pid":12345}           // daemon lifecycle

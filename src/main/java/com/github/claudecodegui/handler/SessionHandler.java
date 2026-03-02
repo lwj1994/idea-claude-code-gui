@@ -3,13 +3,14 @@ package com.github.claudecodegui.handler;
 import com.github.claudecodegui.ClaudeSession;
 import com.github.claudecodegui.bridge.NodeDetector;
 import com.github.claudecodegui.notifications.ClaudeNotifier;
+import com.github.claudecodegui.session.SessionState;
+import com.github.claudecodegui.util.PlatformUtils;
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Logger;
 
-import javax.swing.*;
 import java.io.File;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
@@ -23,11 +24,11 @@ public class SessionHandler extends BaseMessageHandler {
     private static final Logger LOG = Logger.getInstance(SessionHandler.class);
 
     private static final String[] SUPPORTED_TYPES = {
-        "send_message",
-        "send_message_with_attachments",
-        "interrupt_session",
-        "restart_session"
-        // Note: create_new_session should not be handled here; it should be handled by ClaudeSDKToolWindow.createNewSession()
+            "send_message",
+            "send_message_with_attachments",
+            "interrupt_session",
+            "restart_session"
+            // Note: create_new_session should not be handled here; it should be handled by ClaudeSDKToolWindow.createNewSession()
     };
 
     public SessionHandler(HandlerContext context) {
@@ -79,7 +80,7 @@ public class SessionHandler extends BaseMessageHandler {
             int minVersion = NodeDetector.MIN_NODE_MAJOR_VERSION;
             ApplicationManager.getApplication().invokeLater(() -> {
                 callJavaScript("addErrorMessage", escapeJs(
-                    "Node.js 版本过低 (" + nodeVersion + ")，插件需要 v" + minVersion + " 或更高版本才能正常运行。请在设置中配置正确的 Node.js 路径。"));
+                        "Node.js 版本过低 (" + nodeVersion + ")，插件需要 v" + minVersion + " 或更高版本才能正常运行。请在设置中配置正确的 Node.js 路径。"));
             });
             return;
         }
@@ -88,12 +89,13 @@ public class SessionHandler extends BaseMessageHandler {
         String prompt;
         String agentPrompt = null;
         java.util.List<String> fileTagPaths = null;
+        String requestedPermissionMode = null;
         try {
             Gson gson = new Gson();
             JsonObject payload = gson.fromJson(content, JsonObject.class);
             prompt = payload != null && payload.has("text") && !payload.get("text").isJsonNull()
-                ? payload.get("text").getAsString()
-                : content; // Fallback to raw content if not JSON
+                             ? payload.get("text").getAsString()
+                             : content; // Fallback to raw content if not JSON
 
             // Extract agent prompt from the message
             if (payload != null && payload.has("agent") && !payload.get("agent").isJsonNull()) {
@@ -119,6 +121,16 @@ public class SessionHandler extends BaseMessageHandler {
                     LOG.info("[SessionHandler] Extracted " + fileTagPaths.size() + " file tags for context injection");
                 }
             }
+
+            // Extract requested permission mode from payload (optional, backward compatible)
+            if (payload != null && payload.has("permissionMode") && !payload.get("permissionMode").isJsonNull()) {
+                String mode = payload.get("permissionMode").getAsString();
+                if (SessionState.isValidPermissionMode(mode)) {
+                    requestedPermissionMode = mode;
+                } else {
+                    LOG.warn("[SessionHandler] Ignoring invalid permissionMode from payload: " + mode);
+                }
+            }
         } catch (Exception e) {
             // If parsing fails, treat content as plain text (backward compatibility)
             LOG.debug("[SessionHandler] Message is plain text, not JSON: " + e.getMessage());
@@ -128,6 +140,7 @@ public class SessionHandler extends BaseMessageHandler {
         final String finalPrompt = prompt;
         final String finalAgentPrompt = agentPrompt;
         final java.util.List<String> finalFileTagPaths = fileTagPaths;
+        final String finalRequestedPermissionMode = requestedPermissionMode;
 
         CompletableFuture.runAsync(() -> {
             String currentWorkingDir = determineWorkingDirectory();
@@ -145,7 +158,7 @@ public class SessionHandler extends BaseMessageHandler {
             }
 
             // [FIX] Pass agent prompt and file tags directly to session
-            context.getSession().send(finalPrompt, finalAgentPrompt, finalFileTagPaths)
+            context.getSession().send(finalPrompt, finalAgentPrompt, finalFileTagPaths, finalRequestedPermissionMode)
                 .thenRun(() -> {
                     // Claude now triggers success on actual stream_end callback.
                     // Codex has no stream_end event, keep success trigger at completion.
@@ -162,7 +175,7 @@ public class SessionHandler extends BaseMessageHandler {
                         callJavaScript("addErrorMessage", escapeJs("发送失败: " + ex.getMessage()));
                     });
                     return null;
-                });
+                    });
         });
     }
 
@@ -175,8 +188,8 @@ public class SessionHandler extends BaseMessageHandler {
             Gson gson = new Gson();
             JsonObject payload = gson.fromJson(content, JsonObject.class);
             String text = payload != null && payload.has("text") && !payload.get("text").isJsonNull()
-                ? payload.get("text").getAsString()
-                : "";
+                                  ? payload.get("text").getAsString()
+                                  : "";
 
             java.util.List<ClaudeSession.Attachment> atts = new java.util.ArrayList<>();
             if (payload != null && payload.has("attachments") && payload.get("attachments").isJsonArray()) {
@@ -184,20 +197,21 @@ public class SessionHandler extends BaseMessageHandler {
                 for (int i = 0; i < arr.size(); i++) {
                     JsonObject a = arr.get(i).getAsJsonObject();
                     String fileName = a.has("fileName") && !a.get("fileName").isJsonNull()
-                        ? a.get("fileName").getAsString()
-                        : ("attachment-" + System.currentTimeMillis());
+                                              ? a.get("fileName").getAsString()
+                                              : ("attachment-" + System.currentTimeMillis());
                     String mediaType = a.has("mediaType") && !a.get("mediaType").isJsonNull()
-                        ? a.get("mediaType").getAsString()
-                        : "application/octet-stream";
+                                               ? a.get("mediaType").getAsString()
+                                               : "application/octet-stream";
                     String data = a.has("data") && !a.get("data").isJsonNull()
-                        ? a.get("data").getAsString()
-                        : "";
+                                          ? a.get("data").getAsString()
+                                          : "";
                     atts.add(new ClaudeSession.Attachment(fileName, mediaType, data));
                 }
             }
 
             // [FIX] Extract agent prompt from the payload for per-tab agent selection
             String agentPrompt = null;
+            String requestedPermissionMode = null;
             if (payload != null && payload.has("agent") && !payload.get("agent").isJsonNull()) {
                 JsonObject agent = payload.getAsJsonObject("agent");
                 if (agent.has("prompt") && !agent.get("prompt").isJsonNull()) {
@@ -223,7 +237,16 @@ public class SessionHandler extends BaseMessageHandler {
                 }
             }
 
-            sendMessageWithAttachments(text, atts, agentPrompt, fileTagPaths);
+            if (payload != null && payload.has("permissionMode") && !payload.get("permissionMode").isJsonNull()) {
+                String mode = payload.get("permissionMode").getAsString();
+                if (SessionState.isValidPermissionMode(mode)) {
+                    requestedPermissionMode = mode;
+                } else {
+                    LOG.warn("[SessionHandler] Ignoring invalid permissionMode from attachment payload: " + mode);
+                }
+            }
+
+            sendMessageWithAttachments(text, atts, agentPrompt, fileTagPaths, requestedPermissionMode);
         } catch (Exception e) {
             LOG.error("[SessionHandler] 解析附件负载失败: " + e.getMessage(), e);
             handleSendMessage(content);
@@ -234,7 +257,13 @@ public class SessionHandler extends BaseMessageHandler {
      * Send message with attachments to Claude
      * [FIX] Now accepts agent prompt and file tags parameters
      */
-    private void sendMessageWithAttachments(String prompt, List<ClaudeSession.Attachment> attachments, String agentPrompt, java.util.List<String> fileTagPaths) {
+    private void sendMessageWithAttachments(
+        String prompt,
+        List<ClaudeSession.Attachment> attachments,
+        String agentPrompt,
+        java.util.List<String> fileTagPaths,
+        String requestedPermissionMode
+    ) {
         // Version check (consistent with handleSendMessage)
         String nodeVersion = context.getClaudeSDKBridge().getCachedNodeVersion();
         if (nodeVersion == null) {
@@ -247,13 +276,14 @@ public class SessionHandler extends BaseMessageHandler {
             int minVersion = NodeDetector.MIN_NODE_MAJOR_VERSION;
             ApplicationManager.getApplication().invokeLater(() -> {
                 callJavaScript("addErrorMessage", escapeJs(
-                    "Node.js 版本过低 (" + nodeVersion + ")，插件需要 v" + minVersion + " 或更高版本才能正常运行。请在设置中配置正确的 Node.js 路径。"));
+                        "Node.js 版本过低 (" + nodeVersion + ")，插件需要 v" + minVersion + " 或更高版本才能正常运行。请在设置中配置正确的 Node.js 路径。"));
             });
             return;
         }
 
         final String finalAgentPrompt = agentPrompt;
         final java.util.List<String> finalFileTagPaths = fileTagPaths;
+        final String finalRequestedPermissionMode = requestedPermissionMode;
 
         CompletableFuture.runAsync(() -> {
             String currentWorkingDir = determineWorkingDirectory();
@@ -270,7 +300,7 @@ public class SessionHandler extends BaseMessageHandler {
             }
 
             // [FIX] Pass agent prompt and file tags directly to session
-            context.getSession().send(prompt, attachments, finalAgentPrompt, finalFileTagPaths)
+            context.getSession().send(prompt, attachments, finalAgentPrompt, finalFileTagPaths, finalRequestedPermissionMode)
                 .thenRun(() -> {
                     // Claude now triggers success on actual stream_end callback.
                     // Codex has no stream_end event, keep success trigger at completion.
@@ -287,7 +317,7 @@ public class SessionHandler extends BaseMessageHandler {
                         callJavaScript("addErrorMessage", escapeJs("发送失败: " + ex.getMessage()));
                     });
                     return null;
-                });
+                    });
         });
     }
 
@@ -322,7 +352,7 @@ public class SessionHandler extends BaseMessageHandler {
 
         // If the project path is invalid, fall back to the user home directory
         if (projectPath == null || !new File(projectPath).exists()) {
-            String userHome = System.getProperty("user.home");
+            String userHome = PlatformUtils.getHomeDirectory();
             LOG.warn("[SessionHandler] Using user home directory as fallback: " + userHome);
             return userHome;
         }
@@ -330,7 +360,7 @@ public class SessionHandler extends BaseMessageHandler {
         // Try to read custom working directory from configuration
         try {
             com.github.claudecodegui.CodemossSettingsService settingsService =
-                new com.github.claudecodegui.CodemossSettingsService();
+                    new com.github.claudecodegui.CodemossSettingsService();
             String customWorkingDir = settingsService.getCustomWorkingDirectory(projectPath);
 
             if (customWorkingDir != null && !customWorkingDir.isEmpty()) {

@@ -6,6 +6,7 @@ import './styles/app.less';
 import './i18n/config';
 import i18n from './i18n/config';
 import { setupSlashCommandsCallback } from './components/ChatInputBox/providers/slashCommandProvider';
+import { setupDollarCommandsCallback } from './components/ChatInputBox/providers/dollarCommandProvider';
 import { sendBridgeEvent } from './utils/bridge';
 
 // Silence console output in production (including third-party libs).
@@ -304,6 +305,13 @@ if (typeof window !== 'undefined' && !window.updateSlashCommands) {
   };
 }
 
+// Pre-register updateDollarCommands to handle backend calls that arrive before React initializes
+if (typeof window !== 'undefined' && !window.updateDollarCommands) {
+  window.updateDollarCommands = (json: string) => {
+    window.__pendingDollarCommands = json;
+  };
+}
+
 // Pre-register setSessionId to handle backend calls that arrive before React initializes.
 // This stores the session ID required by the rewind feature.
 if (typeof window !== 'undefined' && !window.setSessionId) {
@@ -356,6 +364,15 @@ if (typeof window !== 'undefined' && !window.updateUsageStatistics) {
   window.updateUsageStatistics = (json: string) => {
     console.log('[Main] Storing pending usage statistics, length=' + (json ? json.length : 0));
     window.__pendingUsageStatistics = json;
+  };
+}
+
+// Pre-register onModeReceived to avoid losing early backend push before React callbacks are ready.
+if (typeof window !== 'undefined' && !window.onModeReceived) {
+  console.log('[Main] Pre-registering onModeReceived placeholder');
+  window.onModeReceived = (mode: string) => {
+    console.log('[Main] Storing pending mode:', mode);
+    (window as unknown as Record<string, unknown>).__pendingModeReceived = mode;
   };
 }
 
@@ -420,6 +437,7 @@ function waitForBridge(callback: () => void, maxAttempts = 50, interval = 100) {
 waitForBridge(() => {
   console.log('[Main] Bridge ready, setting up slash commands');
   setupSlashCommandsCallback();
+  setupDollarCommandsCallback();
   startBridgeHeartbeat();
 
   console.log('[Main] Sending frontend_ready signal');

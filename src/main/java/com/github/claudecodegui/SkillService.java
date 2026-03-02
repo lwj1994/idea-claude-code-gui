@@ -1,5 +1,7 @@
 package com.github.claudecodegui;
 
+import com.github.claudecodegui.skill.SkillFrontmatterParser;
+import com.github.claudecodegui.util.PlatformUtils;
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
@@ -7,22 +9,25 @@ import com.intellij.openapi.diagnostic.Logger;
 
 import java.io.File;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.*;
+import java.nio.file.FileVisitResult;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.SimpleFileVisitor;
+import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.List;
-import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
  * Skills service.
- *
+ * <p>
  * Manages skill import, deletion, enabling, and disabling.
- *
+ * <p>
  * Active skills storage locations:
  * - Global: ~/.claude/skills
  * - Local: {workspace}/.claude/skills
- *
+ * <p>
  * Management directories (disabled skills):
  * - Global: ~/.codemoss/skills/global
  * - Local: ~/.codemoss/skills/{project-path-hash}
@@ -36,9 +41,17 @@ public class SkillService {
     private static final String SKILLS_DIR_NAME = "skills";
     private static final String GLOBAL_DIR_NAME = "global";
 
-    // Regex patterns for matching description in YAML frontmatter
-    private static final Pattern FRONTMATTER_PATTERN = Pattern.compile("^---\\s*\\n([\\s\\S]*?)\\n---");
-    private static final Pattern DESCRIPTION_PATTERN = Pattern.compile("description:\\s*(.+?)(?:\\n[a-z-]+:|$)", Pattern.DOTALL);
+    /** Safe skill name pattern: alphanumeric, dots, hyphens, underscores only. */
+    private static final Pattern SAFE_NAME = Pattern.compile("^[a-zA-Z0-9][a-zA-Z0-9._-]*$");
+
+    /**
+     * Validate that a skill name is safe (no path traversal characters).
+     */
+    private static boolean isSafeSkillName(String name) {
+        if (name == null || name.isEmpty()) return false;
+        if (name.contains("..") || name.contains("/") || name.contains("\\") || name.contains("\0")) return false;
+        return SAFE_NAME.matcher(name).matches();
+    }
 
     // ==================== Active Directories (read by Claude) ====================
 
@@ -46,7 +59,7 @@ public class SkillService {
      * Gets the global active skills directory (~/.claude/skills).
      */
     public static String getGlobalSkillsDir() {
-        String homeDir = System.getProperty("user.home");
+        String homeDir = PlatformUtils.getHomeDirectory();
         return Paths.get(homeDir, ".claude", "skills").toString();
     }
 
@@ -66,7 +79,7 @@ public class SkillService {
      * Gets the management directory root path (~/.codemoss/skills).
      */
     private static String getManagementRootDir() {
-        String homeDir = System.getProperty("user.home");
+        String homeDir = PlatformUtils.getHomeDirectory();
         return Paths.get(homeDir, CONFIG_DIR_NAME, SKILLS_DIR_NAME).toString();
     }
 
@@ -161,8 +174,9 @@ public class SkillService {
 
     /**
      * Scans a directory to discover skills.
+     *
      * @param dirPath directory path
-     * @param scope scope (global/local)
+     * @param scope   scope (global/local)
      * @param enabled whether these skills are in the enabled state
      */
     private static JsonObject scanSkillsDirectory(String dirPath, String scope, boolean enabled) {
@@ -185,20 +199,31 @@ public class SkillService {
                 continue;
             }
 
-            String type = entry.isDirectory() ? "directory" : "file";
+            // Per Agent Skills spec: only directories are valid skills
+            if (!entry.isDirectory()) {
+                continue;
+            }
+
             // ID format includes an enabled/disabled marker to distinguish same-named skills
             String id = scope + "-" + entry.getName() + (enabled ? "" : "-disabled");
-            String description = extractDescription(entry.getAbsolutePath(), entry.isDirectory());
 
             JsonObject skill = new JsonObject();
             skill.addProperty("id", id);
-            skill.addProperty("name", entry.getName());
-            skill.addProperty("type", type);
+            skill.addProperty("type", "directory");
             skill.addProperty("scope", scope);
             skill.addProperty("path", entry.getAbsolutePath());
             skill.addProperty("enabled", enabled);
-            if (description != null) {
-                skill.addProperty("description", description);
+
+            // Parse frontmatter for name and description
+            SkillFrontmatterParser.SkillMetadata metadata =
+                    SkillFrontmatterParser.parse(entry.toPath());
+            if (metadata != null) {
+                skill.addProperty("name", metadata.name());
+                skill.addProperty("description", metadata.description());
+            } else {
+                // Keep skill in management list but mark as invalid
+                skill.addProperty("name", entry.getName());
+                skill.addProperty("warning", "invalid_frontmatter");
             }
 
             try {
@@ -217,52 +242,21 @@ public class SkillService {
     }
 
     /**
-     * Extracts the description from a skill.md file.
+     * Extracts the description from a skill directory's SKILL.md.
+     * Delegates to SkillFrontmatterParser for standard YAML parsing.
      */
     private static String extractDescription(String skillPath, boolean isDirectory) {
-        try {
-            String mdPath;
-            if (isDirectory) {
-                // If it's a directory, look for a skill.md or SKILL.md file
-                File skillMd = new File(skillPath, "skill.md");
-                if (!skillMd.exists()) {
-                    skillMd = new File(skillPath, "SKILL.md");
-                }
-                if (!skillMd.exists()) {
-                    return null;
-                }
-                mdPath = skillMd.getAbsolutePath();
-            } else {
-                // If it's a file, check if it's a .md file
-                if (!skillPath.toLowerCase().endsWith(".md")) {
-                    return null;
-                }
-                mdPath = skillPath;
-            }
-
-            String content = Files.readString(Path.of(mdPath), StandardCharsets.UTF_8);
-
-            // Extract description from the YAML frontmatter
-            Matcher frontmatterMatcher = FRONTMATTER_PATTERN.matcher(content);
-            if (frontmatterMatcher.find()) {
-                String frontmatter = frontmatterMatcher.group(1);
-                Matcher descMatcher = DESCRIPTION_PATTERN.matcher(frontmatter);
-                if (descMatcher.find()) {
-                    return descMatcher.group(1).trim();
-                }
-            }
-
-            return null;
-        } catch (IOException e) {
-            LOG.warn("[Skills] 提取 description 失败: " + e.getMessage());
+        if (!isDirectory) {
             return null;
         }
+        return SkillFrontmatterParser.extractDescription(Path.of(skillPath));
     }
 
     /**
      * Imports skills (copies files/directories to the skills directory).
-     * @param sourcePaths list of source file/directory paths
-     * @param scope scope (global/local)
+     *
+     * @param sourcePaths   list of source file/directory paths
+     * @param scope         scope (global/local)
      * @param workspaceRoot workspace root directory
      * @return import result
      */
@@ -359,13 +353,20 @@ public class SkillService {
 
     /**
      * Deletes a skill (supports deleting both enabled and disabled skills).
-     * @param name skill name
-     * @param scope scope (global/local)
-     * @param enabled whether the skill is currently enabled
+     *
+     * @param name          skill name
+     * @param scope         scope (global/local)
+     * @param enabled       whether the skill is currently enabled
      * @param workspaceRoot workspace root directory
      */
     public static JsonObject deleteSkill(String name, String scope, boolean enabled, String workspaceRoot) {
         JsonObject result = new JsonObject();
+
+        if (!isSafeSkillName(name)) {
+            result.addProperty("success", false);
+            result.addProperty("error", "Invalid skill name: " + name);
+            return result;
+        }
 
         // Select the appropriate directory based on the enabled state
         String dir;
@@ -422,12 +423,19 @@ public class SkillService {
 
     /**
      * Enables a skill (moves it from the management directory to the active directory).
-     * @param name skill name
-     * @param scope scope (global/local)
+     *
+     * @param name          skill name
+     * @param scope         scope (global/local)
      * @param workspaceRoot workspace root directory
      */
     public static JsonObject enableSkill(String name, String scope, String workspaceRoot) {
         JsonObject result = new JsonObject();
+
+        if (!isSafeSkillName(name)) {
+            result.addProperty("success", false);
+            result.addProperty("error", "Invalid skill name: " + name);
+            return result;
+        }
 
         // Source directory: management directory (disabled skills)
         String sourceDir = "global".equals(scope) ? getGlobalManagementDir() : getLocalManagementDir(workspaceRoot);
@@ -502,12 +510,19 @@ public class SkillService {
 
     /**
      * Disables a skill (moves it from the active directory to the management directory).
-     * @param name skill name
-     * @param scope scope (global/local)
+     *
+     * @param name          skill name
+     * @param scope         scope (global/local)
      * @param workspaceRoot workspace root directory
      */
     public static JsonObject disableSkill(String name, String scope, String workspaceRoot) {
         JsonObject result = new JsonObject();
+
+        if (!isSafeSkillName(name)) {
+            result.addProperty("success", false);
+            result.addProperty("error", "Invalid skill name: " + name);
+            return result;
+        }
 
         // Source directory: active directory
         String sourceDir = "global".equals(scope) ? getGlobalSkillsDir() : getLocalSkillsDir(workspaceRoot);
@@ -582,10 +597,11 @@ public class SkillService {
 
     /**
      * Toggles the enabled state of a skill.
-     * @param name skill name
-     * @param scope scope (global/local)
+     *
+     * @param name           skill name
+     * @param scope          scope (global/local)
      * @param currentEnabled current enabled state
-     * @param workspaceRoot workspace root directory
+     * @param workspaceRoot  workspace root directory
      */
     public static JsonObject toggleSkill(String name, String scope, boolean currentEnabled, String workspaceRoot) {
         if (currentEnabled) {

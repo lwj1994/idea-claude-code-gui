@@ -231,8 +231,6 @@ const HistoryView = ({ historyData, currentProvider, onLoadSession, onDeleteSess
     }
 
     if (trimmedTitle.length > 50) {
-      // Exceeds 50 characters, show error alert
-      alert(t('history.titleTooLong'));
       return;
     }
 

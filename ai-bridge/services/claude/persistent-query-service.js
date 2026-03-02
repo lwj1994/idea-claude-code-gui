@@ -134,10 +134,22 @@ function shouldAutoApproveTool(permissionMode, toolName) {
   return false;
 }
 
-function createPreToolUseHook(permissionMode) {
-  let currentPermissionMode = (!permissionMode || permissionMode === '') ? 'default' : permissionMode;
+function createPreToolUseHook(permissionModeState) {
+  const readPermissionMode = () => {
+    // Daemon runtimes are reused across turns. Keep hook mode in sync with
+    // runtime dynamic controls instead of capturing a stale value at creation time.
+    if (permissionModeState && typeof permissionModeState === 'object') {
+      const normalized = normalizePermissionMode(permissionModeState.value);
+      if (permissionModeState.value !== normalized) {
+        permissionModeState.value = normalized;
+      }
+      return normalized;
+    }
+    return normalizePermissionMode(permissionModeState);
+  };
 
   return async (input) => {
+    let currentPermissionMode = readPermissionMode();
     const toolName = input?.tool_name;
 
     if (currentPermissionMode === 'plan') {
@@ -169,6 +181,9 @@ function createPreToolUseHook(permissionMode) {
           if (result?.approved) {
             const nextMode = result.targetMode || 'default';
             currentPermissionMode = nextMode;
+            if (permissionModeState && typeof permissionModeState === 'object') {
+              permissionModeState.value = nextMode;
+            }
             return {
               decision: 'approve',
               updatedInput: {
@@ -236,8 +251,13 @@ function createPreToolUseHook(permissionMode) {
   };
 }
 
+const VALID_PERMISSION_MODES = new Set(['default', 'plan', 'acceptEdits', 'bypassPermissions']);
+
 function normalizePermissionMode(permissionMode) {
-  return (!permissionMode || permissionMode === '') ? 'default' : permissionMode;
+  if (!permissionMode || permissionMode === '') return 'default';
+  if (VALID_PERMISSION_MODES.has(permissionMode)) return permissionMode;
+  console.warn('[DAEMON] Unknown permission mode, falling back to default:', permissionMode);
+  return 'default';
 }
 
 function buildRuntimeSignature(options, systemPromptAppend, streamingEnabled) {
@@ -302,11 +322,6 @@ function buildQueryOptions(workingDirectory, sdkModelName, permissionMode, maxTh
       )
     ),
     canUseTool,
-    hooks: {
-      PreToolUse: [{
-        hooks: [createPreToolUseHook(permissionMode)]
-      }]
-    },
     settingSources: ['user', 'project', 'local'],
     systemPrompt: {
       type: 'preset',
@@ -436,13 +451,15 @@ async function disposeRuntime(runtime) {
 
 async function createRuntime(requestContext) {
   const queryFn = await ensureQueryFn();
+  const initialPermissionMode = normalizePermissionMode(requestContext.permissionMode);
 
   const runtime = {
     closed: false,
     sessionId: requestContext.requestedSessionId || null,
     runtimeSignature: requestContext.runtimeSignature,
     currentModel: requestContext.sdkModelName || null,
-    currentPermissionMode: requestContext.permissionMode || 'default',
+    currentPermissionMode: initialPermissionMode,
+    permissionModeState: { value: initialPermissionMode },
     currentMaxThinkingTokens: requestContext.maxThinkingTokens ?? null,
     createdAt: Date.now(),
     lastUsedAt: Date.now(),
@@ -466,6 +483,12 @@ async function createRuntime(requestContext) {
       }
     }
   };
+  options.hooks = {
+    ...(options.hooks || {}),
+    PreToolUse: [{
+      hooks: [createPreToolUseHook(runtime.permissionModeState)]
+    }]
+  };
 
   runtime.query = queryFn({
     prompt: runtime.inputStream,
@@ -486,13 +509,18 @@ async function createRuntime(requestContext) {
 async function applyDynamicControls(runtime, requestContext) {
   if (!runtime || runtime.closed) return;
 
-  const targetPermissionMode = requestContext.permissionMode || 'default';
-  if (runtime.currentPermissionMode !== targetPermissionMode && typeof runtime.query?.setPermissionMode === 'function') {
-    try {
-      await runtime.query.setPermissionMode(targetPermissionMode);
-      runtime.currentPermissionMode = targetPermissionMode;
-    } catch (error) {
-      console.error('[DAEMON] setPermissionMode failed:', error.message);
+  const targetPermissionMode = normalizePermissionMode(requestContext.permissionMode);
+  if (runtime.currentPermissionMode !== targetPermissionMode) {
+    if (typeof runtime.query?.setPermissionMode === 'function') {
+      try {
+        await runtime.query.setPermissionMode(targetPermissionMode);
+      } catch (error) {
+        console.error('[DAEMON] setPermissionMode failed:', error.message);
+      }
+    }
+    runtime.currentPermissionMode = targetPermissionMode;
+    if (runtime.permissionModeState) {
+      runtime.permissionModeState.value = targetPermissionMode;
     }
   }
 

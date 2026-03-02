@@ -216,8 +216,8 @@ export function McpSettingsSection({ currentProvider = 'claude' }: McpSettingsSe
   // Add server from marketplace
   const handleAddFromMarket = useCallback(() => {
     setShowDropdown(false);
-    alert(t('mcp.marketComingSoon'));
-  }, [t]);
+    addToast(t('mcp.marketComingSoon'), 'info');
+  }, [t, addToast]);
 
   // Save server
   const handleSaveServer = useCallback((server: McpServer) => {

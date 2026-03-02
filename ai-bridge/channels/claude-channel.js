@@ -5,7 +5,6 @@
 import {
   sendMessage as claudeSendMessage,
   sendMessageWithAttachments as claudeSendMessageWithAttachments,
-  getSlashCommands as claudeGetSlashCommands,
   rewindFiles as claudeRewindFiles,
   getMcpServerStatus as claudeGetMcpServerStatus,
   getMcpServerTools as claudeGetMcpServerTools
@@ -63,12 +62,6 @@ export async function handleClaudeCommand(command, args, stdinData) {
       await claudeGetSessionMessages(args[0], args[1]);
       break;
 
-    case 'getSlashCommands': {
-      const cwd = stdinData?.cwd || args[0] || null;
-      await claudeGetSlashCommands(cwd);
-      break;
-    }
-
     case 'rewindFiles': {
       const sessionId = stdinData?.sessionId || args[0];
       const userMessageId = stdinData?.userMessageId || args[1];
@@ -102,5 +95,5 @@ export async function handleClaudeCommand(command, args, stdinData) {
 }
 
 export function getClaudeCommandList() {
-  return ['send', 'sendWithAttachments', 'getSession', 'getSlashCommands', 'rewindFiles', 'getMcpServerStatus', 'getMcpServerTools'];
+  return ['send', 'sendWithAttachments', 'getSession', 'rewindFiles', 'getMcpServerStatus', 'getMcpServerTools'];
 }

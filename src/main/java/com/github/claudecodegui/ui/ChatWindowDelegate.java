@@ -81,6 +81,7 @@ public class ChatWindowDelegate {
         void callJavaScript(String fn, String... args);
         Content getParentContent();
         String getOriginalTabName();
+        void setOriginalTabName(String name);
         String getSessionId();
         HandlerContext getHandlerContext();
         void setHandlerContext(HandlerContext ctx);
@@ -351,15 +352,27 @@ public class ChatWindowDelegate {
         }
 
         ApplicationManager.getApplication().invokeLater(() -> {
+            // Detect external renames: if current name doesn't start with originalTabName,
+            // someone renamed the tab (e.g. RenameTabAction) — adopt the new name
+            String tabName = originalTabName;
+            String currentDisplayName = parentContent.getDisplayName();
+            if (currentDisplayName != null && !currentDisplayName.startsWith(tabName)) {
+                tabName = currentDisplayName.endsWith("...")
+                    ? currentDisplayName.substring(0, currentDisplayName.length() - 3)
+                    : currentDisplayName;
+                host.setOriginalTabName(tabName);
+                LOG.debug("[TabStatus] Detected external rename, updated originalTabName to: " + tabName);
+            }
+
             String displayName;
             switch (status) {
                 case ANSWERING:
-                    displayName = originalTabName + "...";
+                    displayName = tabName + "...";
                     LOG.debug("[TabStatus] Set answering state for tab: " + displayName);
                     break;
                 case COMPLETED:
                     String completedText = ClaudeCodeGuiBundle.message("tab.status.completed");
-                    displayName = originalTabName + " (" + completedText + ")";
+                    displayName = tabName + " (" + completedText + ")";
                     LOG.debug("[TabStatus] Set completed state for tab: " + displayName);
 
                     statusResetTask = AppExecutorUtil.getAppScheduledExecutorService().schedule(() -> {
@@ -370,7 +383,7 @@ public class ChatWindowDelegate {
                     break;
                 case IDLE:
                 default:
-                    displayName = originalTabName;
+                    displayName = tabName;
                     LOG.debug("[TabStatus] Restored idle state for tab: " + displayName);
                     break;
             }

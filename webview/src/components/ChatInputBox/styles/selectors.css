@@ -21,6 +21,15 @@
   color: var(--text-primary);
 }
 
+/* Auto mode (bypassPermissions) - subtle orange indicator */
+.selector-button.mode-auto-active {
+  color: #cc8400;
+}
+
+.selector-button.mode-auto-active:hover {
+  color: #e09520;
+}
+
 .selector-button .codicon {
   font-size: 14px;
 }

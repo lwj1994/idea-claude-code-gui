@@ -182,5 +182,11 @@ ${entriesCode},
 `;
 
 const outputPath = path.join(versionDir, 'changelog.ts');
-fs.writeFileSync(outputPath, tsContent);
-console.log(`Changelog file created at: ${outputPath}`);
+
+// Only write if content actually changed to avoid unnecessary git diffs
+if (fs.existsSync(outputPath) && fs.readFileSync(outputPath, 'utf8') === tsContent) {
+  console.log(`Changelog file unchanged, skipping write: ${outputPath}`);
+} else {
+  fs.writeFileSync(outputPath, tsContent);
+  console.log(`Changelog file updated: ${outputPath}`);
+}

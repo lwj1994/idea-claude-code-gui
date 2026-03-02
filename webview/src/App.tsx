@@ -19,7 +19,6 @@ import {
   useWindowCallbacks,
   useRewindHandlers,
   useHistoryLoader,
-  useUsageStats,
   useFileChanges,
   useSubagents,
   useMessageQueue,
@@ -375,14 +374,6 @@ const App = () => {
       }
     };
 
-    // Register permission mode sync callback from Java
-    window.onModeReceived = (mode: string) => {
-      if (mode === 'default' || mode === 'plan' || mode === 'acceptEdits' || mode === 'bypassPermissions') {
-        setPermissionMode(mode);
-        setClaudePermissionMode(mode);
-      }
-    };
-
     // Initialize font scaling
     const savedLevel = localStorage.getItem('fontSizeLevel');
     const level = savedLevel ? parseInt(savedLevel, 10) : 2; // Default level 2 (90%)
@@ -619,8 +610,6 @@ const App = () => {
   // History data loading
   useHistoryLoader({ currentView, currentProvider });
 
-  // Usage statistics polling
-  useUsageStats();
 
   // Window callbacks (bridge communication)
   useWindowCallbacks({
@@ -779,9 +768,20 @@ const App = () => {
     text: string,
     attachments: Attachment[] | undefined,
     agentInfo: { id: string; name: string; prompt?: string } | null,
-    fileTagsInfo: { displayPath: string; absolutePath: string }[] | null
+    fileTagsInfo: { displayPath: string; absolutePath: string }[] | null,
+    requestedPermissionMode: PermissionMode
   ) => {
     const hasAttachments = Array.isArray(attachments) && attachments.length > 0;
+    // Keep a single source of truth for each request:
+    // payload.permissionMode > sessionMode > default (backend fallback).
+    const effectivePermissionMode: PermissionMode = currentProvider === 'codex'
+      ? 'bypassPermissions'
+      : requestedPermissionMode;
+    console.debug('[ModeSync][Frontend] send request mode', {
+      provider: currentProvider,
+      requestedMode: requestedPermissionMode,
+      effectiveMode: effectivePermissionMode,
+    });
 
     if (hasAttachments) {
       try {
@@ -794,18 +794,29 @@ const App = () => {
           })),
           agent: agentInfo,
           fileTags: fileTagsInfo,
+          permissionMode: effectivePermissionMode,
         });
         sendBridgeEvent('send_message_with_attachments', payload);
       } catch (error) {
         console.error('[Frontend] Failed to serialize attachments payload', error);
-        const fallbackPayload = JSON.stringify({ text, agent: agentInfo, fileTags: fileTagsInfo });
+        const fallbackPayload = JSON.stringify({
+          text,
+          agent: agentInfo,
+          fileTags: fileTagsInfo,
+          permissionMode: effectivePermissionMode,
+        });
         sendBridgeEvent('send_message', fallbackPayload);
       }
     } else {
-      const payload = JSON.stringify({ text, agent: agentInfo, fileTags: fileTagsInfo });
+      const payload = JSON.stringify({
+        text,
+        agent: agentInfo,
+        fileTags: fileTagsInfo,
+        permissionMode: effectivePermissionMode,
+      });
       sendBridgeEvent('send_message', payload);
     }
-  }, []);
+  }, [currentProvider]);
 
   /**
    * Execute message sending (from queue or directly)
@@ -896,11 +907,12 @@ const App = () => {
     })) : null;
 
     // Send message to backend
-    sendMessageToBackend(text, attachments, agentInfo, fileTagsInfo);
+    sendMessageToBackend(text, attachments, agentInfo, fileTagsInfo, permissionMode);
   }, [
     sdkStatusLoaded,
     currentSdkInstalled,
     currentProvider,
+    permissionMode,
     selectedAgent,
     buildUserContentBlocks,
     sendMessageToBackend,
@@ -1550,12 +1562,9 @@ const App = () => {
     findToolResult,
   });
 
-  // Derive expanded state: auto-expand when content exists, unless user manually collapsed
-  const hasStatusPanelContent = globalTodos.length > 0 || filteredFileChanges.length > 0 || subagents.length > 0;
-  if (!hasStatusPanelContent) {
-    userCollapsedRef.current = false;
-  }
-  const statusPanelExpanded = hasStatusPanelContent && !userCollapsedRef.current;
+  // Derive expanded state only from user preference:
+  // even with no tasks/subagents/file changes, users can still expand the panel.
+  const statusPanelExpanded = !userCollapsedRef.current;
 
   const sessionTitle = useMemo(() => {
     if (customSessionTitle) {

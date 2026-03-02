@@ -31,7 +31,6 @@ import java.util.regex.Pattern;
 public class ClaudeSDKBridge extends BaseSDKBridge {
 
     private static final String NODE_SCRIPT = "simple-query.js";
-    private static final String SLASH_COMMANDS_CHANNEL_ID = "__slash_commands__";
     private static final String MCP_STATUS_CHANNEL_ID = "__mcp_status__";
 
     /** Maximum characters to preview in log output */
@@ -310,9 +309,6 @@ public class ClaudeSDKBridge extends BaseSDKBridge {
         } else if (line.startsWith("[SESSION_ID]")) {
             String capturedSessionId = line.substring("[SESSION_ID]".length()).trim();
             callback.onMessage("session_id", capturedSessionId);
-        } else if (line.startsWith("[SLASH_COMMANDS]")) {
-            String slashCommandsJson = line.substring("[SLASH_COMMANDS]".length()).trim();
-            callback.onMessage("slash_commands", slashCommandsJson);
         } else if (line.startsWith("[TOOL_RESULT]")) {
             String toolResultJson = line.substring("[TOOL_RESULT]".length()).trim();
             callback.onMessage("tool_result", toolResultJson);
@@ -977,9 +973,6 @@ public class ClaudeSDKBridge extends BaseSDKBridge {
                             } else if (line.startsWith("[SESSION_ID]")) {
                                 String capturedSessionId = line.substring("[SESSION_ID]".length()).trim();
                                 callback.onMessage("session_id", capturedSessionId);
-                            } else if (line.startsWith("[SLASH_COMMANDS]")) {
-                                String slashCommandsJson = line.substring("[SLASH_COMMANDS]".length()).trim();
-                                callback.onMessage("slash_commands", slashCommandsJson);
                             } else if (line.startsWith("[TOOL_RESULT]")) {
                                 String toolResultJson = line.substring("[TOOL_RESULT]".length()).trim();
                                 callback.onMessage("tool_result", toolResultJson);
@@ -1128,138 +1121,6 @@ public class ClaudeSDKBridge extends BaseSDKBridge {
         } catch (Exception e) {
             throw new RuntimeException("Failed to get session messages: " + e.getMessage(), e);
         }
-    }
-
-    /**
-     * Get slash commands list.
-     */
-    public CompletableFuture<List<JsonObject>> getSlashCommands(String cwd) {
-        return CompletableFuture.supplyAsync(() -> {
-            Process process = null;
-
-            try {
-                String node = nodeDetector.findNodeExecutable();
-
-                JsonObject stdinInput = new JsonObject();
-                stdinInput.addProperty("cwd", cwd != null ? cwd : "");
-                String stdinJson = gson.toJson(stdinInput);
-
-                File bridgeDir = getDirectoryResolver().findSdkDir();
-                if (bridgeDir == null || !bridgeDir.exists()) {
-                    return new ArrayList<>();
-                }
-
-                File channelScript = new File(bridgeDir, CHANNEL_SCRIPT);
-                if (!channelScript.exists()) {
-                    LOG.error("channel-manager.js not found at: " + channelScript.getAbsolutePath());
-                    return new ArrayList<>();
-                }
-
-                List<String> command = new ArrayList<>();
-                command.add(node);
-                command.add(channelScript.getAbsolutePath());
-                command.add("claude");
-                command.add("getSlashCommands");
-
-                ProcessBuilder pb = new ProcessBuilder(command);
-                pb.directory(bridgeDir);
-                pb.redirectErrorStream(true);
-                envConfigurator.updateProcessEnvironment(pb, node);
-                pb.environment().put("CLAUDE_USE_STDIN", "true");
-
-                process = pb.start();
-                processManager.registerProcess(SLASH_COMMANDS_CHANNEL_ID, process);
-                final Process finalProcess = process;
-
-                try (java.io.OutputStream stdin = process.getOutputStream()) {
-                    stdin.write(stdinJson.getBytes(StandardCharsets.UTF_8));
-                    stdin.flush();
-                } catch (Exception e) {
-                    // Ignore stdin write error
-                }
-
-                final boolean[] found = {false};
-                final String[] slashCommandsJson = {null};
-                final StringBuilder output = new StringBuilder();
-
-                Thread readerThread = new Thread(() -> {
-                    try (BufferedReader reader = new BufferedReader(
-                            new InputStreamReader(finalProcess.getInputStream(), StandardCharsets.UTF_8))) {
-                        String line;
-                        while (!found[0] && (line = reader.readLine()) != null) {
-                            output.append(line).append("\n");
-
-                            if (line.startsWith("[SLASH_COMMANDS]")) {
-                                slashCommandsJson[0] = line.substring("[SLASH_COMMANDS]".length()).trim();
-                                found[0] = true;
-                                break;
-                            }
-                        }
-                    } catch (Exception e) {
-                        // Reader thread exception, ignore
-                    }
-                });
-                readerThread.start();
-
-                long deadline = System.currentTimeMillis() + 60000; // 60-second timeout
-                while (!found[0] && System.currentTimeMillis() < deadline) {
-                    Thread.sleep(100);
-                }
-
-                if (process.isAlive()) {
-                    PlatformUtils.terminateProcess(process);
-                }
-
-                List<JsonObject> commands = new ArrayList<>();
-
-                if (found[0] && slashCommandsJson[0] != null && !slashCommandsJson[0].isEmpty()) {
-                    try {
-                        JsonArray commandsArray = gson.fromJson(slashCommandsJson[0], JsonArray.class);
-                        for (var cmd : commandsArray) {
-                            commands.add(cmd.getAsJsonObject());
-                        }
-                        return commands;
-                    } catch (Exception e) {
-                        LOG.warn("Failed to parse commands JSON: " + e.getMessage());
-                    }
-                }
-
-                // Fallback: use extractLastJsonLine for multi-line output handling
-                String outputStr = output.toString().trim();
-                String jsonStr = extractLastJsonLine(outputStr);
-                if (jsonStr != null) {
-                    try {
-                        JsonObject jsonResult = gson.fromJson(jsonStr, JsonObject.class);
-                        if (jsonResult.has("success") && jsonResult.get("success").getAsBoolean()) {
-                            if (jsonResult.has("commands")) {
-                                JsonArray commandsArray = jsonResult.getAsJsonArray("commands");
-                                for (var cmd : commandsArray) {
-                                    commands.add(cmd.getAsJsonObject());
-                                }
-                            }
-                        }
-                    } catch (Exception e) {
-                        // Fallback JSON parse failed, ignore
-                    }
-                }
-
-                return commands;
-
-            } catch (Exception e) {
-                LOG.error("getSlashCommands exception: " + e.getMessage());
-                return new ArrayList<>();
-            } finally {
-                if (process != null) {
-                    try {
-                        if (process.isAlive()) {
-                            PlatformUtils.terminateProcess(process);
-                        }
-                    } finally {
-                        processManager.unregisterProcess(SLASH_COMMANDS_CHANNEL_ID, process);
-                    }
-                }
-            }
-        });
     }
 
     /**

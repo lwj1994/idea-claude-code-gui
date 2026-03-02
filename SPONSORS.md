@@ -1,5 +1,27 @@
 # 赞助者列表 / Sponsors List
 
+<table>
+  <tr>
+    <td align="center">
+      <img src="https://claudecodecn-1253302184.cos.ap-beijing.myqcloud.com/zfb.jpg" width="200" alt="Alipay">
+      <br>
+      <b>Alipay</b>
+    </td>
+    <td align="center">
+      <img src="https://claudecodecn-1253302184.cos.ap-beijing.myqcloud.com/wx.jpg" width="200" alt="WeChat">
+      <br>
+      <b>WeChat</b>
+    </td>
+    <td align="center">
+      <img src="https://claudecodecn-1253302184.cos.ap-beijing.myqcloud.com/paypal.png" width="200" alt="PayPal">
+      <br>
+      <b>PayPal</b>
+    </td>
+  </tr>
+</table>
+
+---
+
 感谢以下赞助者的支持 ❤️
 
 Thanks to the following sponsors for their support ❤️
