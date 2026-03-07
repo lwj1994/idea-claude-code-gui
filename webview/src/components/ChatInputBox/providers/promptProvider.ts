@@ -56,6 +56,7 @@ export function setupPromptsCallback() {
   if (callbackRegistered && window.updateGlobalPrompts && window.updateProjectPrompts) return;
 
   const globalHandler = (json: string) => {
+    console.log('[PromptProvider] Received global prompts from backend, length=' + json.length);
     debugLog('[PromptProvider] Received global prompts from backend, length=' + json.length);
 
     try {
@@ -76,6 +77,7 @@ export function setupPromptsCallback() {
       retryCount = 0; // Reset retry count on success
       pendingWaiters.forEach(w => w.resolve());
       pendingWaiters = [];
+      console.log('[PromptProvider] Successfully loaded ' + prompts.length + ' global prompts');
       debugLog('[PromptProvider] Successfully loaded ' + prompts.length + ' global prompts');
     } catch (error) {
       globalLoadingState = 'failed';
@@ -86,6 +88,7 @@ export function setupPromptsCallback() {
   };
 
   const projectHandler = (json: string) => {
+    console.log('[PromptProvider] Received project prompts from backend, length=' + json.length);
     debugLog('[PromptProvider] Received project prompts from backend, length=' + json.length);
 
     try {
@@ -106,6 +109,7 @@ export function setupPromptsCallback() {
       retryCount = 0; // Reset retry count on success
       pendingWaiters.forEach(w => w.resolve());
       pendingWaiters = [];
+      console.log('[PromptProvider] Successfully loaded ' + prompts.length + ' project prompts');
       debugLog('[PromptProvider] Successfully loaded ' + prompts.length + ' project prompts');
     } catch (error) {
       projectLoadingState = 'failed';

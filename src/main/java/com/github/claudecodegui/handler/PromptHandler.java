@@ -15,6 +15,7 @@ import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.fileChooser.FileChooser;
 import com.intellij.openapi.fileChooser.FileChooserDescriptor;
+import com.intellij.openapi.project.Project;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.openapi.vfs.LocalFileSystem;
 
@@ -134,6 +135,8 @@ public class PromptHandler extends BaseMessageHandler {
                 ? "window.updateGlobalPrompts"
                 : "window.updateProjectPrompts";
 
+            LOG.info("[PromptHandler] Sending " + prompts.size() + " prompts for scope=" + scope.getValue() + " via callback=" + callbackName);
+
             ApplicationManager.getApplication().invokeLater(() -> {
                 callJavaScript(callbackName, escapeJs(promptsJson));
             });
@@ -169,8 +172,8 @@ public class PromptHandler extends BaseMessageHandler {
                 projectInfo.addProperty("path", project.getBasePath());
             } else {
                 projectInfo.addProperty("available", false);
-                projectInfo.addProperty("name", null);
-                projectInfo.addProperty("path", null);
+                projectInfo.addProperty("name", (String) null);
+                projectInfo.addProperty("path", (String) null);
             }
 
             String projectInfoJson = gson.toJson(projectInfo);
@@ -184,8 +187,8 @@ public class PromptHandler extends BaseMessageHandler {
             // Send null project info on error
             JsonObject projectInfo = new JsonObject();
             projectInfo.addProperty("available", false);
-            projectInfo.addProperty("name", null);
-            projectInfo.addProperty("path", null);
+            projectInfo.addProperty("name", (String) null);
+            projectInfo.addProperty("path", (String) null);
 
             ApplicationManager.getApplication().invokeLater(() -> {
                 callJavaScript("window.updateProjectInfo", escapeJs(gson.toJson(projectInfo)));
