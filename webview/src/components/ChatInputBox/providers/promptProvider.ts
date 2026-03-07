@@ -191,22 +191,22 @@ function waitForPrompts(signal: AbortSignal, timeoutMs: number): Promise<void> {
   });
 }
 
-function requestRefresh(): boolean {
+function requestRefresh(force = false): boolean {
   const now = Date.now();
 
-  if (now - lastRefreshTime < MIN_REFRESH_INTERVAL) {
+  if (!force && now - lastRefreshTime < MIN_REFRESH_INTERVAL) {
     debugLog('[PromptProvider] Skipping refresh (too soon)');
     return false;
   }
 
-  if (retryCount >= MAX_RETRY_COUNT) {
+  if (!force && retryCount >= MAX_RETRY_COUNT) {
     debugWarn('[PromptProvider] Max retry count reached, giving up');
     globalLoadingState = 'failed';
     projectLoadingState = 'failed';
     return false;
   }
 
-  const attempt = retryCount + 1;
+  const attempt = force ? 0 : retryCount + 1;
 
   // Request both global and project prompts
   const globalMessage: GetPromptsMessage = { scope: 'global' };
@@ -225,7 +225,7 @@ function requestRefresh(): boolean {
   projectLoadingState = 'loading';
   retryCount = attempt;
 
-  debugLog('[PromptProvider] Requesting refresh from backend (attempt ' + retryCount + '/' + MAX_RETRY_COUNT + ')');
+  debugLog('[PromptProvider] Requesting refresh from backend (force=' + force + ', attempt=' + retryCount + '/' + MAX_RETRY_COUNT + ')');
   return true;
 }
 
@@ -281,11 +281,16 @@ export async function promptProvider(
   if ((globalLoadingState === 'idle' || globalLoadingState === 'failed') ||
       (projectLoadingState === 'idle' || projectLoadingState === 'failed')) {
     requestRefresh();
-  } else if ((globalLoadingState === 'loading' || projectLoadingState === 'loading') &&
-             now - lastRefreshTime > LOADING_TIMEOUT) {
-    debugWarn('[PromptProvider] Loading timeout');
-    globalLoadingState = 'failed';
-    projectLoadingState = 'failed';
+  } else if (now - lastRefreshTime > LOADING_TIMEOUT) {
+    // Handle timeout for each scope separately
+    if (globalLoadingState === 'loading') {
+      debugWarn('[PromptProvider] Global prompts loading timeout');
+      globalLoadingState = 'failed';
+    }
+    if (projectLoadingState === 'loading') {
+      debugWarn('[PromptProvider] Project prompts loading timeout');
+      projectLoadingState = 'failed';
+    }
   }
 
   // Wait only briefly (500ms), then return currently available data
@@ -354,6 +359,69 @@ export function promptToDropdownItem(prompt: PromptItem): DropdownItemData {
     type: 'prompt',
     data: { prompt },
   };
+}
+
+/**
+ * Directly update global prompts cache (called by PromptSection)
+ * This ensures cache is always in sync with settings page
+ */
+export function updateGlobalPromptsCache(prompts: PromptItem[]) {
+  cachedGlobalPrompts = prompts;
+  globalLoadingState = 'success';
+  lastRefreshTime = Date.now();
+  debugLog('[PromptProvider] Global prompts cache updated directly:', prompts.length);
+}
+
+/**
+ * Directly update project prompts cache (called by PromptSection)
+ * This ensures cache is always in sync with settings page
+ */
+export function updateProjectPromptsCache(prompts: PromptItem[]) {
+  cachedProjectPrompts = prompts;
+  projectLoadingState = 'success';
+  lastRefreshTime = Date.now();
+  debugLog('[PromptProvider] Project prompts cache updated directly:', prompts.length);
+}
+
+/**
+ * Preload prompts during app initialization
+ * Load both global and project prompts before user types "!" to improve perceived performance
+ *
+ * Safety guarantees:
+ * - Skips if already loading or loaded (checks loadingState)
+ * - requestRefresh() has MIN_REFRESH_INTERVAL deduplication protection
+ * - Shares state with promptProvider, subsequent calls hit cache directly
+ */
+export function preloadPrompts(): void {
+  // Only preload in idle state, don't interfere with in-progress or completed loads
+  if (globalLoadingState !== 'idle' && projectLoadingState !== 'idle') {
+    debugLog('[PromptProvider] Preload skipped (globalState=' + globalLoadingState + ', projectState=' + projectLoadingState + ')');
+    return;
+  }
+
+  debugLog('[PromptProvider] Preloading prompts on app init');
+
+  // Ensure callback is registered before requesting refresh
+  setupPromptsCallback();
+
+  // Request refresh -- built-in deduplication protection
+  requestRefresh();
+}
+
+/**
+ * Force refresh prompts regardless of loading state
+ * Used when switching to chat view to ensure project prompts are loaded
+ * Ignores time interval and retry count limits
+ */
+export function forceRefreshPrompts(): void {
+  debugLog('[PromptProvider] Force refreshing prompts');
+
+  // Ensure callback is registered before requesting refresh
+  setupPromptsCallback();
+
+  // Reset retry count and force refresh
+  retryCount = 0;
+  requestRefresh(true);
 }
 
 export default promptProvider;

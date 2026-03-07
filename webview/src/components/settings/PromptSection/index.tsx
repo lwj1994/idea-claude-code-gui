@@ -1,7 +1,8 @@
-import { useEffect, useCallback } from 'react';
+import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import type { PromptConfig, PromptScope } from '../../../types/prompt';
+import type { PromptScope } from '../../../types/prompt';
 import { usePromptManagement } from '../hooks/usePromptManagement';
+import { updateGlobalPromptsCache, updateProjectPromptsCache } from '../../ChatInputBox/providers';
 import PromptScopeSection from './PromptScopeSection';
 import PromptDialog from '../../PromptDialog';
 import ConfirmDialog from '../../ConfirmDialog';
@@ -68,15 +69,24 @@ export default function PromptSection({
     const originalUpdateGlobalPrompts = window.updateGlobalPrompts;
     const originalUpdateProjectPrompts = window.updateProjectPrompts;
     const originalUpdateProjectInfo = window.updateProjectInfo;
-    const originalHandlePromptOperationResult = window.handlePromptOperationResult;
-    const originalHandlePromptImportPreviewResult = window.handlePromptImportPreviewResult;
-    const originalHandlePromptImportResult = window.handlePromptImportResult;
+    const originalPromptOperationResult = window.promptOperationResult;
+    const originalPromptImportPreviewResult = window.promptImportPreviewResult;
+    const originalPromptImportResult = window.promptImportResult;
 
     // Chain our handlers with existing ones
     window.updateGlobalPrompts = (json: string) => {
       try {
         const promptsList = JSON.parse(json);
         updateGlobalPrompts(promptsList);
+
+        // ✅ Sync update promptProvider cache
+        const promptItems = promptsList.map((prompt: any) => ({
+          id: prompt.id,
+          name: prompt.name,
+          content: prompt.content,
+          scope: 'global' as PromptScope,
+        }));
+        updateGlobalPromptsCache(promptItems);
       } catch (error) {
         console.error('[PromptSection] Failed to parse global prompts:', error);
       }
@@ -88,6 +98,15 @@ export default function PromptSection({
       try {
         const promptsList = JSON.parse(json);
         updateProjectPrompts(promptsList);
+
+        // ✅ Sync update promptProvider cache
+        const promptItems = promptsList.map((prompt: any) => ({
+          id: prompt.id,
+          name: prompt.name,
+          content: prompt.content,
+          scope: 'project' as PromptScope,
+        }));
+        updateProjectPromptsCache(promptItems);
       } catch (error) {
         console.error('[PromptSection] Failed to parse project prompts:', error);
       }
@@ -106,7 +125,7 @@ export default function PromptSection({
       originalUpdateProjectInfo?.(json);
     };
 
-    window.handlePromptOperationResult = (json: string) => {
+    window.promptOperationResult = (json: string) => {
       try {
         const result = JSON.parse(json);
         handlePromptOperationResult(result);
@@ -114,10 +133,10 @@ export default function PromptSection({
         console.error('[PromptSection] Failed to parse prompt operation result:', error);
       }
       // Call original handler if exists
-      originalHandlePromptOperationResult?.(json);
+      originalPromptOperationResult?.(json);
     };
 
-    window.handlePromptImportPreviewResult = (json: string) => {
+    window.promptImportPreviewResult = (json: string) => {
       try {
         const previewData = JSON.parse(json);
         handlePromptImportPreviewResult(previewData);
@@ -125,10 +144,10 @@ export default function PromptSection({
         console.error('[PromptSection] Failed to parse prompt import preview result:', error);
       }
       // Call original handler if exists
-      originalHandlePromptImportPreviewResult?.(json);
+      originalPromptImportPreviewResult?.(json);
     };
 
-    window.handlePromptImportResult = (json: string) => {
+    window.promptImportResult = (json: string) => {
       try {
         const result = JSON.parse(json);
         handlePromptImportResult(result);
@@ -136,7 +155,7 @@ export default function PromptSection({
         console.error('[PromptSection] Failed to parse prompt import result:', error);
       }
       // Call original handler if exists
-      originalHandlePromptImportResult?.(json);
+      originalPromptImportResult?.(json);
     };
 
     return () => {
@@ -145,9 +164,9 @@ export default function PromptSection({
       window.updateGlobalPrompts = originalUpdateGlobalPrompts;
       window.updateProjectPrompts = originalUpdateProjectPrompts;
       window.updateProjectInfo = originalUpdateProjectInfo;
-      window.handlePromptOperationResult = originalHandlePromptOperationResult;
-      window.handlePromptImportPreviewResult = originalHandlePromptImportPreviewResult;
-      window.handlePromptImportResult = originalHandlePromptImportResult;
+      window.promptOperationResult = originalPromptOperationResult;
+      window.promptImportPreviewResult = originalPromptImportPreviewResult;
+      window.promptImportResult = originalPromptImportResult;
     };
   }, [
     updateGlobalPrompts,
@@ -157,16 +176,6 @@ export default function PromptSection({
     handlePromptImportPreviewResult,
     handlePromptImportResult,
   ]);
-
-  // Copy to global handler
-  const handleCopyToGlobal = useCallback((_prompt: PromptConfig) => {
-    // Create a copy without the scope field
-    // const { scope: _scope, ...promptData } = prompt;
-    // Open add dialog for global scope with pre-filled data
-    handleAddPrompt('global');
-    // The dialog will need to be enhanced to accept initial data
-    // For now, this opens an empty dialog - TODO: enhance PromptDialog to accept initialData
-  }, [handleAddPrompt]);
 
   // Get all prompts for export dialog (combining global and project based on export scope)
   const getPromptsForExport = (scope: PromptScope) => {
@@ -198,13 +207,11 @@ export default function PromptSection({
           scope="project"
           prompts={projectPrompts}
           loading={promptsLoading}
-          showCopyToGlobal={true}
           onAdd={() => handleAddPrompt('project')}
           onEdit={(prompt) => handleEditPrompt(prompt, 'project')}
           onDelete={(prompt) => handleDeletePrompt(prompt, 'project')}
           onExport={() => handleExportPrompts('project')}
           onImport={() => handleImportPromptsFile('project')}
-          onCopyToGlobal={handleCopyToGlobal}
         />
       ) : (
         <div className={styles.noProject}>

@@ -47,8 +47,19 @@ public class ProjectPromptManager extends AbstractPromptManager {
     @Override
     protected void ensureStorageDirectory() throws IOException {
         Path dir = getStoragePath().getParent();
+        Path filePath = getStoragePath();
+
+        com.intellij.openapi.diagnostic.Logger LOG =
+            com.intellij.openapi.diagnostic.Logger.getInstance(ProjectPromptManager.class);
+
+        LOG.warn("[ProjectPromptManager] Ensuring directory exists: " + dir);
+        LOG.warn("[ProjectPromptManager] Target file path: " + filePath);
+
         if (!Files.exists(dir)) {
             Files.createDirectories(dir);
+            LOG.warn("[ProjectPromptManager] ✓ Created directory: " + dir);
+        } else {
+            LOG.warn("[ProjectPromptManager] Directory already exists: " + dir);
         }
     }
 }

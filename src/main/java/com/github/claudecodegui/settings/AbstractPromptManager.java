@@ -79,14 +79,18 @@ public abstract class AbstractPromptManager {
      * Write the prompt.json file.
      */
     public void writePromptConfig(JsonObject config) throws IOException {
+        LOG.warn("[AbstractPromptManager] ===== Writing prompt config... =====");
         ensureStorageDirectory();
 
         Path promptPath = getStoragePath();
+        LOG.warn("[AbstractPromptManager] Writing to path: " + promptPath);
+        LOG.warn("[AbstractPromptManager] Config has " + config.getAsJsonObject("prompts").size() + " prompts");
+
         try (BufferedWriter writer = Files.newBufferedWriter(promptPath, StandardCharsets.UTF_8)) {
             gson.toJson(config, writer);
-            LOG.debug("[AbstractPromptManager] Successfully wrote prompt.json");
+            LOG.warn("[AbstractPromptManager] ✓ Successfully wrote prompt.json to: " + promptPath);
         } catch (Exception e) {
-            LOG.warn("[AbstractPromptManager] Failed to write prompt.json: " + e.getMessage());
+            LOG.error("[AbstractPromptManager] ✗ Failed to write prompt.json to " + promptPath + ": " + e.getMessage(), e);
             throw e;
         }
     }
@@ -389,8 +393,10 @@ public abstract class AbstractPromptManager {
             }
         }
 
+        LOG.warn(String.format("[AbstractPromptManager] About to write config with %d total prompts (imported=%d, updated=%d, skipped=%d)",
+                prompts.size(), imported, updated, skipped));
         writePromptConfig(config);
-        LOG.debug(String.format("[AbstractPromptManager] Batch import completed: %d imported, %d updated, %d skipped",
+        LOG.warn(String.format("[AbstractPromptManager] ✓ Batch import completed: %d imported, %d updated, %d skipped",
                 imported, updated, skipped));
 
         result.put("imported", imported);

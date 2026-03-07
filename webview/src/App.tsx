@@ -12,6 +12,7 @@ import RewindSelectDialog, { type RewindableMessage } from './components/RewindS
 import { sendBridgeEvent } from './utils/bridge';
 import { insertNewlineAtCursor } from './hooks/useContextMenu.js';
 import { ChatInputBox } from './components/ChatInputBox';
+import { preloadSlashCommands, forceRefreshPrompts } from './components/ChatInputBox/providers';
 import {
   useScrollBehavior,
   useDialogManagement,
@@ -146,6 +147,8 @@ const App = () => {
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   // Add-model dialog state (opened from model selector in chat view)
   const [addModelDialogOpen, setAddModelDialogOpen] = useState(false);
+  // Track if this is the first mount to avoid duplicate prompt refresh
+  const isFirstMountRef = useRef(true);
 
   // IDE theme state - prefer initial theme injected by Java
   const [ideTheme, setIdeTheme] = useState<'light' | 'dark' | null>(() => {
@@ -350,6 +353,37 @@ const App = () => {
       document.removeEventListener('dragenter', preventDefaultDragDrop);
     };
   }, []);
+
+  // Preload slash commands and prompts on app mount to improve perceived performance
+  // Load data before user interacts with input box so it's immediately available
+  useEffect(() => {
+    preloadSlashCommands();
+    // Use forceRefreshPrompts to ensure project prompts are loaded
+    // even if project isn't ready immediately (bypasses retry limits and time intervals)
+    forceRefreshPrompts();
+
+    // Retry after 1 second to ensure project prompts are loaded
+    // (in case project wasn't ready on first attempt)
+    const retryTimer = setTimeout(() => {
+      forceRefreshPrompts();
+    }, 1000);
+
+    return () => clearTimeout(retryTimer);
+  }, []);
+
+  // Force refresh prompts when switching to chat view from other views
+  // Ensures prompts are up-to-date after editing in settings
+  useEffect(() => {
+    // Skip on first mount (already handled by the effect above)
+    if (isFirstMountRef.current) {
+      isFirstMountRef.current = false;
+      return;
+    }
+
+    if (currentView === 'chat') {
+      forceRefreshPrompts();
+    }
+  }, [currentView]);
 
   // Initialize theme and font scaling
   useEffect(() => {

@@ -51,7 +51,6 @@ import {
   agentToDropdownItem,
   promptProvider,
   promptToDropdownItem,
-  preloadSlashCommands,
   dollarCommandProvider,
   dollarCommandToDropdownItem,
   type AgentItem,
@@ -782,12 +781,6 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
       closeAllCompletions,
       focusInput,
     });
-
-    // Preload slash commands on mount to improve perceived performance
-    // Load command data before user types "/" so it's immediately available
-    useEffect(() => {
-      preloadSlashCommands();
-    }, []);
 
     useSpaceKeyListener({ editableRef, onKeyDown: handleKeyDownForTagRendering });
 

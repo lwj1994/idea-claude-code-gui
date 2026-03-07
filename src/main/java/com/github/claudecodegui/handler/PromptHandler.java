@@ -4,6 +4,7 @@ import com.github.claudecodegui.CodemossSettingsService;
 import com.github.claudecodegui.model.ConflictStrategy;
 import com.github.claudecodegui.model.PromptScope;
 import com.github.claudecodegui.settings.AbstractPromptManager;
+import com.github.claudecodegui.watcher.PromptFileWatcher;
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
@@ -48,11 +49,43 @@ public class PromptHandler extends BaseMessageHandler {
 
     private final CodemossSettingsService settingsService;
     private final Gson gson;
+    private final PromptFileWatcher fileWatcher;
 
     public PromptHandler(HandlerContext context) {
         super(context);
         this.settingsService = context.getSettingsService();
         this.gson = new Gson();
+
+        // Initialize file watcher to monitor .codemoss/prompt.json changes
+        this.fileWatcher = new PromptFileWatcher(
+            context.getProject(),
+            settingsService,
+            (scope, promptsJson) -> {
+                // When file changes, notify frontend to update cache
+                final String callbackName = scope == PromptScope.GLOBAL
+                    ? "window.updateGlobalPrompts"
+                    : "window.updateProjectPrompts";
+
+                ApplicationManager.getApplication().invokeLater(() -> {
+                    callJavaScript(callbackName, escapeJs(promptsJson));
+                });
+
+                LOG.info("[PromptHandler] File watcher triggered update for scope=" + scope.getValue());
+            }
+        );
+
+        // Start watching for file changes
+        fileWatcher.startWatching();
+    }
+
+    /**
+     * Cleanup method called when the handler is disposed.
+     * Stops the file watcher to prevent memory leaks.
+     */
+    public void dispose() {
+        if (fileWatcher != null) {
+            fileWatcher.stopWatching();
+        }
     }
 
     @Override
@@ -127,7 +160,11 @@ public class PromptHandler extends BaseMessageHandler {
     private void handleGetPrompts(String content) {
         try {
             PromptScope scope = parseScopeFromData(content);
+            LOG.warn("[PromptHandler] Getting prompts for scope: " + scope.getValue());
+
             List<JsonObject> prompts = settingsService.getPrompts(scope, context.getProject());
+            LOG.warn("[PromptHandler] Retrieved " + prompts.size() + " prompts for scope: " + scope.getValue());
+
             String promptsJson = gson.toJson(prompts);
 
             // Call different window callbacks based on scope
@@ -136,7 +173,27 @@ public class PromptHandler extends BaseMessageHandler {
                 : "window.updateProjectPrompts";
 
             ApplicationManager.getApplication().invokeLater(() -> {
+                LOG.warn("[PromptHandler] Sending " + prompts.size() + " prompts to frontend via " + callbackName);
                 callJavaScript(callbackName, escapeJs(promptsJson));
+            });
+        } catch (IllegalStateException e) {
+            // If project prompts are requested but project is not ready yet, silently fail
+            // Don't send empty array to frontend - let it retry later when user triggers "!"
+            PromptScope scope = parseScopeFromData(content);
+            if (scope == PromptScope.PROJECT && e.getMessage() != null && e.getMessage().contains("Project not available")) {
+                LOG.warn("[PromptHandler] Project not ready yet, skipping project prompts callback (will retry on user action)");
+                // Don't call frontend callback - let frontend stay in idle/loading state
+                return;
+            }
+
+            // For other errors, send empty array
+            final String callbackName = scope == PromptScope.GLOBAL
+                ? "window.updateGlobalPrompts"
+                : "window.updateProjectPrompts";
+
+            ApplicationManager.getApplication().invokeLater(() -> {
+                LOG.error("[PromptHandler] Sending empty prompts list due to error: " + e.getMessage());
+                callJavaScript(callbackName, escapeJs("[]"));
             });
         } catch (Exception e) {
             LOG.error("[PromptHandler] Failed to get prompts: " + e.getMessage(), e);
@@ -148,6 +205,7 @@ public class PromptHandler extends BaseMessageHandler {
                 : "window.updateProjectPrompts";
 
             ApplicationManager.getApplication().invokeLater(() -> {
+                LOG.error("[PromptHandler] Sending empty prompts list due to error");
                 callJavaScript(callbackName, escapeJs("[]"));
             });
         }
@@ -653,6 +711,9 @@ public class PromptHandler extends BaseMessageHandler {
 
             AbstractPromptManager promptManager = settingsService.getPromptManager(scope, context.getProject());
             Map<String, Object> result = promptManager.batchImportPrompts(promptsToImport, strategy);
+
+            // Add scope to result for frontend to know which list to refresh
+            result.put("scope", scope.getValue());
 
             // Send result to frontend
             final PromptScope finalScope = scope;

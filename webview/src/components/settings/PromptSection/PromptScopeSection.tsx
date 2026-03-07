@@ -12,8 +12,6 @@ interface PromptScopeSectionProps {
   prompts: PromptConfig[];
   /** Loading state */
   loading: boolean;
-  /** Show "Copy to Global" button (for project prompts) */
-  showCopyToGlobal?: boolean;
   /** Handler for add button */
   onAdd: () => void;
   /** Handler for edit */
@@ -24,8 +22,6 @@ interface PromptScopeSectionProps {
   onExport: () => void;
   /** Handler for import */
   onImport: () => void;
-  /** Handler for copy to global (optional) */
-  onCopyToGlobal?: (prompt: PromptConfig) => void;
 }
 
 export default function PromptScopeSection({
@@ -34,13 +30,11 @@ export default function PromptScopeSection({
   scope: _scope,
   prompts,
   loading,
-  showCopyToGlobal = false,
   onAdd,
   onEdit,
   onDelete,
   onExport,
   onImport,
-  onCopyToGlobal,
 }: PromptScopeSectionProps) {
   const { t } = useTranslation();
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
@@ -71,13 +65,6 @@ export default function PromptScopeSection({
   const handleDeleteClick = (prompt: PromptConfig) => {
     setOpenMenuId(null);
     onDelete(prompt);
-  };
-
-  const handleCopyToGlobalClick = (prompt: PromptConfig) => {
-    setOpenMenuId(null);
-    if (onCopyToGlobal) {
-      onCopyToGlobal(prompt);
-    }
   };
 
   return (
@@ -165,16 +152,6 @@ export default function PromptScopeSection({
                       <span className="codicon codicon-edit" />
                       {t('common.edit')}
                     </button>
-                    {showCopyToGlobal && onCopyToGlobal && (
-                      <button
-                        className={styles.menuItem}
-                        onClick={() => handleCopyToGlobalClick(prompt)}
-                        role="menuitem"
-                      >
-                        <span className="codicon codicon-globe" />
-                        {t('settings.prompt.copyToGlobal')}
-                      </button>
-                    )}
                     <button
                       className={`${styles.menuItem} ${styles.danger}`}
                       onClick={() => handleDeleteClick(prompt)}
