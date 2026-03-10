@@ -4,6 +4,7 @@ import com.github.claudecodegui.CodemossSettingsService;
 import com.github.claudecodegui.model.PromptScope;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
+import com.github.claudecodegui.util.PlatformUtils;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.vfs.VirtualFile;
@@ -96,7 +97,7 @@ public class PromptFileWatcher implements BulkFileListener {
      * Pattern: ~/.codemoss/prompt.json
      */
     private boolean isGlobalPromptFile(String filePath) {
-        String homeDir = System.getProperty("user.home");
+        String homeDir = PlatformUtils.getHomeDirectory();
         String globalPromptPath = homeDir + "/.codemoss/prompt.json";
         return filePath.equals(globalPromptPath);
     }

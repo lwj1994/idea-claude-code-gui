@@ -65,8 +65,8 @@ public class SessionState {
     // Codex reasoning effort (thinking depth)
     private volatile String reasoningEffort = "medium";
 
-    // Slash commands
-    private List<String> slashCommands = new ArrayList<>();
+    // Slash commands — volatile for cross-thread visibility (same reason as permissionMode/model/provider)
+    private volatile List<String> slashCommands = new ArrayList<>();
 
     // PSI context collection toggle
     private boolean psiContextEnabled = true;

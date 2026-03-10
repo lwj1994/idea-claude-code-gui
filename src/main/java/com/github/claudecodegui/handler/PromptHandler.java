@@ -36,6 +36,8 @@ public class PromptHandler extends BaseMessageHandler {
 
     private static final Logger LOG = Logger.getInstance(PromptHandler.class);
 
+    private static final long MAX_IMPORT_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+
     private static final String[] SUPPORTED_TYPES = {
         "get_prompts",
         "get_project_info",
@@ -90,7 +92,7 @@ public class PromptHandler extends BaseMessageHandler {
 
     @Override
     public String[] getSupportedTypes() {
-        return SUPPORTED_TYPES;
+        return SUPPORTED_TYPES.clone();
     }
 
     @Override
@@ -160,10 +162,10 @@ public class PromptHandler extends BaseMessageHandler {
     private void handleGetPrompts(String content) {
         try {
             PromptScope scope = parseScopeFromData(content);
-            LOG.warn("[PromptHandler] Getting prompts for scope: " + scope.getValue());
+            LOG.debug("[PromptHandler] Getting prompts for scope: " + scope.getValue());
 
             List<JsonObject> prompts = settingsService.getPrompts(scope, context.getProject());
-            LOG.warn("[PromptHandler] Retrieved " + prompts.size() + " prompts for scope: " + scope.getValue());
+            LOG.debug("[PromptHandler] Retrieved " + prompts.size() + " prompts for scope: " + scope.getValue());
 
             String promptsJson = gson.toJson(prompts);
 
@@ -173,7 +175,7 @@ public class PromptHandler extends BaseMessageHandler {
                 : "window.updateProjectPrompts";
 
             ApplicationManager.getApplication().invokeLater(() -> {
-                LOG.warn("[PromptHandler] Sending " + prompts.size() + " prompts to frontend via " + callbackName);
+                LOG.debug("[PromptHandler] Sending " + prompts.size() + " prompts to frontend via " + callbackName);
                 callJavaScript(callbackName, escapeJs(promptsJson));
             });
         } catch (IllegalStateException e) {
@@ -290,13 +292,7 @@ public class PromptHandler extends BaseMessageHandler {
             });
         } catch (Exception e) {
             LOG.error("[PromptHandler] Failed to add prompt: " + e.getMessage(), e);
-            JsonObject errorResult = new JsonObject();
-            errorResult.addProperty("success", false);
-            errorResult.addProperty("operation", "add");
-            errorResult.addProperty("error", e.getMessage());
-            ApplicationManager.getApplication().invokeLater(() -> {
-                callJavaScript("window.promptOperationResult", escapeJs(gson.toJson(errorResult)));
-            });
+            sendErrorResult("add", "Failed to add prompt");
         }
     }
 
@@ -343,13 +339,7 @@ public class PromptHandler extends BaseMessageHandler {
             });
         } catch (Exception e) {
             LOG.error("[PromptHandler] Failed to update prompt: " + e.getMessage(), e);
-            JsonObject errorResult = new JsonObject();
-            errorResult.addProperty("success", false);
-            errorResult.addProperty("operation", "update");
-            errorResult.addProperty("error", e.getMessage());
-            ApplicationManager.getApplication().invokeLater(() -> {
-                callJavaScript("window.promptOperationResult", escapeJs(gson.toJson(errorResult)));
-            });
+            sendErrorResult("update", "Failed to update prompt");
         }
     }
 
@@ -400,13 +390,7 @@ public class PromptHandler extends BaseMessageHandler {
             }
         } catch (Exception e) {
             LOG.error("[PromptHandler] Failed to delete prompt: " + e.getMessage(), e);
-            JsonObject errorResult = new JsonObject();
-            errorResult.addProperty("success", false);
-            errorResult.addProperty("operation", "delete");
-            errorResult.addProperty("error", e.getMessage());
-            ApplicationManager.getApplication().invokeLater(() -> {
-                callJavaScript("window.promptOperationResult", escapeJs(gson.toJson(errorResult)));
-            });
+            sendErrorResult("delete", "Failed to delete prompt");
         }
     }
 
@@ -582,7 +566,7 @@ public class PromptHandler extends BaseMessageHandler {
 
                 // Check file size (limit to 5MB)
                 long fileSize = file.length();
-                long maxSize = 5 * 1024 * 1024; // 5MB
+                long maxSize = MAX_IMPORT_FILE_SIZE;
                 if (fileSize > maxSize) {
                     Notifications.Bus.notify(new Notification(
                             "Codemoss",
@@ -726,10 +710,10 @@ public class PromptHandler extends BaseMessageHandler {
                 handleGetPrompts(scopeJson);
 
                 // Show notification
-                boolean success = (boolean) result.get("success");
-                int imported = (int) result.get("imported");
-                int updated = (int) result.get("updated");
-                int skipped = (int) result.get("skipped");
+                boolean success = Boolean.TRUE.equals(result.get("success"));
+                int imported = result.get("imported") instanceof Number ? ((Number) result.get("imported")).intValue() : 0;
+                int updated = result.get("updated") instanceof Number ? ((Number) result.get("updated")).intValue() : 0;
+                int skipped = result.get("skipped") instanceof Number ? ((Number) result.get("skipped")).intValue() : 0;
 
                 if (success) {
                     String message = String.format("Imported %d prompts (%d new, %d updated, %d skipped)",

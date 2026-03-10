@@ -19,8 +19,6 @@ interface DependencySectionProps {
 const sendToJava = (message: string) => {
   if (window.sendToJava) {
     window.sendToJava(message);
-  } else {
-    console.warn('[DependencySection] sendToJava is not available');
   }
 };
 

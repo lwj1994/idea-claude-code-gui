@@ -43,7 +43,6 @@ export default function ProviderList({
 
     // Register global callback functions for Java invocation
     (window as any).import_preview_result = (dataOrStr: any) => {
-        console.log('[Frontend] Received import_preview_result:', dataOrStr);
         let data = dataOrStr;
         if (typeof data === 'string') {
             try {
@@ -57,7 +56,6 @@ export default function ProviderList({
     };
 
     (window as any).backend_notification = (...args: any[]) => {
-        console.log('[Frontend] Received backend_notification args:', args);
         let data: any = {};
         
         // Support multi-argument invocation (type, title, message) to avoid JSON parsing issues

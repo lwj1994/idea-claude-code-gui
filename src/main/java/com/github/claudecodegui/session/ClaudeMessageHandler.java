@@ -39,16 +39,17 @@ public class ClaudeMessageHandler implements MessageCallback {
     // Whether the AI is currently in thinking mode
     private boolean isThinking = false;
 
-    // Streaming state tracking
-    private boolean isStreaming = false;
+    // Streaming state tracking — volatile because these fields are read/written across
+    // message callback threads and EDT, with no other happens-before guarantee.
+    private volatile boolean isStreaming = false;
 
-    private boolean streamEndedThisTurn = false;
-    private boolean errorReportedThisTurn = false;
-    private String lastReportedError = null;
+    private volatile boolean streamEndedThisTurn = false;
+    private volatile boolean errorReportedThisTurn = false;
+    private volatile String lastReportedError = null;
 
     // Streaming segment state (used to split text/thinking around tool calls)
-    private boolean textSegmentActive = false;
-    private boolean thinkingSegmentActive = false;
+    private volatile boolean textSegmentActive = false;
+    private volatile boolean thinkingSegmentActive = false;
 
     /**
      * Constructor.

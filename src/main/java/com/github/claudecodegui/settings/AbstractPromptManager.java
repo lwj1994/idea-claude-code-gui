@@ -79,16 +79,14 @@ public abstract class AbstractPromptManager {
      * Write the prompt.json file.
      */
     public void writePromptConfig(JsonObject config) throws IOException {
-        LOG.warn("[AbstractPromptManager] ===== Writing prompt config... =====");
         ensureStorageDirectory();
 
         Path promptPath = getStoragePath();
-        LOG.warn("[AbstractPromptManager] Writing to path: " + promptPath);
-        LOG.warn("[AbstractPromptManager] Config has " + config.getAsJsonObject("prompts").size() + " prompts");
+        LOG.debug("[AbstractPromptManager] Writing prompt config to: " + promptPath);
 
         try (BufferedWriter writer = Files.newBufferedWriter(promptPath, StandardCharsets.UTF_8)) {
             gson.toJson(config, writer);
-            LOG.warn("[AbstractPromptManager] ✓ Successfully wrote prompt.json to: " + promptPath);
+            LOG.debug("[AbstractPromptManager] Successfully wrote prompt.json to: " + promptPath);
         } catch (Exception e) {
             LOG.error("[AbstractPromptManager] ✗ Failed to write prompt.json to " + promptPath + ": " + e.getMessage(), e);
             throw e;
@@ -159,8 +157,8 @@ public abstract class AbstractPromptManager {
             prompt.addProperty("createdAt", System.currentTimeMillis());
         }
 
-        // Add the prompt
-        prompts.add(id, prompt);
+        // Add the prompt (deep copy to avoid caller mutation)
+        prompts.add(id, prompt.deepCopy());
 
         writePromptConfig(config);
         LOG.debug("[AbstractPromptManager] Added prompt: " + id);
@@ -310,10 +308,15 @@ public abstract class AbstractPromptManager {
     public String generateUniqueId(String baseId, JsonObject existingItems) {
         String uniqueId = baseId;
         int suffix = 1;
+        int maxAttempts = 10000;
 
-        while (existingItems.has(uniqueId)) {
+        while (existingItems.has(uniqueId) && suffix <= maxAttempts) {
             uniqueId = baseId + "-" + suffix;
             suffix++;
+        }
+
+        if (suffix > maxAttempts) {
+            throw new IllegalStateException("Could not generate unique ID after " + maxAttempts + " attempts");
         }
 
         return uniqueId;
@@ -357,8 +360,9 @@ public abstract class AbstractPromptManager {
 
                         case OVERWRITE:
                             LOG.debug("[AbstractPromptManager] Overwriting existing prompt: " + id);
-                            prompt.addProperty("updatedAt", System.currentTimeMillis());
-                            prompts.add(id, prompt);
+                            JsonObject overwritePrompt = prompt.deepCopy();
+                            overwritePrompt.addProperty("updatedAt", System.currentTimeMillis());
+                            prompts.add(id, overwritePrompt);
                             updated++;
                             break;
 
@@ -376,13 +380,14 @@ public abstract class AbstractPromptManager {
                             break;
                     }
                 } else {
-                    if (!prompt.has("createdAt")) {
-                        prompt.addProperty("createdAt", System.currentTimeMillis());
+                    JsonObject newPrompt = prompt.deepCopy();
+                    if (!newPrompt.has("createdAt")) {
+                        newPrompt.addProperty("createdAt", System.currentTimeMillis());
                     }
-                    if (!prompt.has("updatedAt")) {
-                        prompt.addProperty("updatedAt", System.currentTimeMillis());
+                    if (!newPrompt.has("updatedAt")) {
+                        newPrompt.addProperty("updatedAt", System.currentTimeMillis());
                     }
-                    prompts.add(id, prompt);
+                    prompts.add(id, newPrompt);
                     imported++;
                 }
             } catch (Exception e) {
@@ -393,10 +398,8 @@ public abstract class AbstractPromptManager {
             }
         }
 
-        LOG.warn(String.format("[AbstractPromptManager] About to write config with %d total prompts (imported=%d, updated=%d, skipped=%d)",
-                prompts.size(), imported, updated, skipped));
         writePromptConfig(config);
-        LOG.warn(String.format("[AbstractPromptManager] ✓ Batch import completed: %d imported, %d updated, %d skipped",
+        LOG.info(String.format("[AbstractPromptManager] Batch import completed: %d imported, %d updated, %d skipped",
                 imported, updated, skipped));
 
         result.put("imported", imported);

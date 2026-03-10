@@ -50,8 +50,6 @@ interface SettingsViewProps {
 const sendToJava = (message: string) => {
   if (window.sendToJava) {
     window.sendToJava(message);
-  } else {
-    console.warn('[SettingsView] sendToJava is not available');
   }
 };
 
@@ -309,7 +307,6 @@ const SettingsView = ({
 
   // Helper function to show in-page alert dialog
   const showAlert = (type: AlertType, title: string, message: string) => {
-    console.log('[SettingsView] showAlert called:', { type, title, message });
     setAlertDialog({ isOpen: true, type, title, message });
   };
 
@@ -397,7 +394,6 @@ const SettingsView = ({
       if (preference === 'system') {
         // If following IDE, need to wait for IDE theme to load
         if (ideTheme === null) {
-          console.log('[SettingsView] Waiting for IDE theme to load...');
           return; // Wait for ideTheme to load
         }
         document.documentElement.setAttribute('data-theme', ideTheme);

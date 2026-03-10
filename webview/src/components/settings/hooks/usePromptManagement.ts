@@ -50,7 +50,7 @@ export interface UsePromptManagementOptions {
 }
 
 export function usePromptManagement(options: UsePromptManagementOptions = {}) {
-  const { onSuccess } = options;
+  const { onSuccess, onError } = options;
   const { t } = useTranslation();
 
   // Timeout timer reference (using useRef to avoid global variable pollution)
@@ -121,8 +121,6 @@ export function usePromptManagement(options: UsePromptManagementOptions = {}) {
 
   // Update global prompts list (used by window callback)
   const updateGlobalPrompts = useCallback((promptsList: PromptConfig[]) => {
-    console.log('[usePromptManagement] Updating global prompts, count:', promptsList.length);
-
     // Clear timeout timer
     if (promptsLoadingTimeoutRef.current) {
       clearTimeout(promptsLoadingTimeoutRef.current);
@@ -135,8 +133,6 @@ export function usePromptManagement(options: UsePromptManagementOptions = {}) {
 
   // Update project prompts list (used by window callback)
   const updateProjectPrompts = useCallback((promptsList: PromptConfig[]) => {
-    console.log('[usePromptManagement] Updating project prompts, count:', promptsList.length);
-
     // Clear timeout timer
     if (promptsLoadingTimeoutRef.current) {
       clearTimeout(promptsLoadingTimeoutRef.current);
@@ -250,9 +246,11 @@ export function usePromptManagement(options: UsePromptManagementOptions = {}) {
           delete: t('settings.prompt.deleteSuccess'),
         };
         onSuccess?.(operationMessages[result.operation || ''] || t('settings.prompt.operationSuccess'));
+      } else {
+        onError?.(result.error || t('settings.prompt.operationFailed'));
       }
     },
-    [onSuccess, t]
+    [onSuccess, onError, t]
   );
 
   // Open export dialog
@@ -328,8 +326,6 @@ export function usePromptManagement(options: UsePromptManagementOptions = {}) {
   // Handle import result (used by window callback)
   const handlePromptImportResult = useCallback(
     (result: { success: boolean; imported: number; updated: number; skipped: number; scope: PromptScope; error?: string }) => {
-      console.log('[usePromptManagement] Import result received:', result);
-
       if (result.success) {
         const message = t('settings.prompt.importDialog.importPartialSuccess', {
           imported: result.imported,
@@ -340,7 +336,6 @@ export function usePromptManagement(options: UsePromptManagementOptions = {}) {
       }
 
       // Reload prompts list for the affected scope
-      console.log('[usePromptManagement] Reloading prompts for scope:', result.scope);
       loadPrompts(result.scope);
     },
     [onSuccess, t, loadPrompts]

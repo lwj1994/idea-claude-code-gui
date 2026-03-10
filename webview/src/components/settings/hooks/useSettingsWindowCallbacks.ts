@@ -11,8 +11,6 @@ import type { ToastMessage } from '../../Toast';
 const sendToJava = (message: string) => {
   if (window.sendToJava) {
     window.sendToJava(message);
-  } else {
-    console.warn('[SettingsView] sendToJava is not available');
   }
 };
 

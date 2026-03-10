@@ -39,8 +39,8 @@ public class PythonContextCollector {
             if (scopeInfo != null && scopeInfo.size() > 0) {
                 semanticData.add("scope", scopeInfo);
             }
-        } catch (Throwable t) { 
-            // ignore 
+        } catch (Exception e) {
+            // ignore - optional context collection
         }
         
         // 2. Imports
@@ -49,8 +49,8 @@ public class PythonContextCollector {
             if (imports.size() > 0) {
                 semanticData.add("imports", imports);
             }
-        } catch (Throwable t) { 
-            // ignore 
+        } catch (Exception e) {
+            // ignore - optional context collection
         }
     }
     
@@ -83,7 +83,7 @@ public class PythonContextCollector {
                     if (docString != null) {
                         scope.addProperty("docstring", docString);
                     }
-                } catch (Throwable t) {
+                } catch (Exception e) {
                     // ignore - docstring is optional
                 }
             }
@@ -97,7 +97,7 @@ public class PythonContextCollector {
                     }
                 }
                 scope.add("args", args);
-            } catch (Throwable t) {
+            } catch (Exception e) {
                 // ignore - args extraction may fail with experimental API
             }
         }
