@@ -410,16 +410,14 @@ public class SessionHandler extends BaseMessageHandler {
             }
         }
 
-        // When the active file is outside projectPath, prefer its parent directory.
-        // Typical case: single-file temporary project (projectPath in /tmp)
-        // while the actual file is under the user's home path.
-        String activeFileDir = resolveWorkingDirectoryFromActiveFile(projectPath);
-        if (activeFileDir != null && !activeFileDir.isEmpty()) {
-            return activeFileDir;
-        }
-
-        // Fall back to the user's home directory when projectPath is invalid.
+        // When projectPath is invalid (null or missing), try the active file's
+        // parent directory first — typical case: single-file temporary project
+        // (projectPath in /tmp) while the actual file is under the user's home.
         if (projectPath == null || !new File(projectPath).exists()) {
+            String activeFileDir = resolveWorkingDirectoryFromActiveFile(projectPath);
+            if (activeFileDir != null && !activeFileDir.isEmpty()) {
+                return activeFileDir;
+            }
             String userHome = PlatformUtils.getHomeDirectory();
             LOG.warn("[SessionHandler] Using user home directory as fallback: " + userHome);
             return userHome;
