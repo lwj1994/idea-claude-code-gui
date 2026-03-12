@@ -526,6 +526,13 @@ interface Window {
   __sessionTransitionToken?: string | null;
 
   /**
+   * Resets all transient UI state (loading, streaming, toasts, refs) in one shot.
+   * Called by beginSessionTransition (useSessionManagement) to synchronously
+   * clear both React state AND internal refs before starting a new session.
+   */
+  __resetTransientUiState?: () => void;
+
+  /**
    * Rewind result callback - returns the result of a rewind operation
    */
   onRewindResult?: (json: string) => void;
