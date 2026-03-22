@@ -13,6 +13,9 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
   const {
     setMessages,
     setStreamingActive,
+    setLoading,
+    setLoadingStartTime,
+    setIsThinking,
     setExpandedThinking,
     streamingContentRef,
     isStreamingRef,
@@ -243,6 +246,15 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
 
     // React state (not ref) — React batches this with setMessages automatically
     setStreamingActive(false);
+
+    // FIX: onStreamEnd is the authoritative signal that streaming has ended.
+    // Reset loading state here to prevent race conditions where showLoading("false")
+    // arrives before onStreamEnd and gets ignored by the isStreamingRef guard,
+    // while the flush callback's showLoading("false") may be delayed or lost
+    // (e.g., due to slow message serialization or multi-hop async chains).
+    setLoading(false);
+    setLoadingStartTime(null);
+    setIsThinking(false);
   };
 
   // Permission denied callback — marks incomplete tool calls as "interrupted"

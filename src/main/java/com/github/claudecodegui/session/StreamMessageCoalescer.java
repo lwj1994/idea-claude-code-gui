@@ -208,6 +208,13 @@ public class StreamMessageCoalescer {
 
             ApplicationManager.getApplication().invokeLater(() -> {
                 if (callbackTarget.isDisposed()) {
+                    // FIX: Still run afterSendOnEdt even when disposed, so that
+                    // onStreamEnd/showLoading(false) callbacks execute and clear
+                    // streaming state. Without this, a dispose race leaves the
+                    // frontend permanently stuck in "responding" state.
+                    if (afterSendOnEdt != null) {
+                        afterSendOnEdt.run();
+                    }
                     return;
                 }
 
